@@ -1,0 +1,7 @@
+/* Non-focus display only. No storage, inputs, editor, backdrop or HUD master. */
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent!important;pointer-events:none}
+#ft-group{position:absolute;left:0;top:0;transform-origin:0 0;visibility:hidden;pointer-events:none}
+#ft-canvas{position:relative;transform-origin:0 0}
+.ft-block{position:absolute;overflow:visible;pointer-events:none}
+.ft-text{position:absolute;left:50%;top:50%;display:inline-block;white-space:pre;max-width:none;margin:0;line-height:1.08;transform-origin:center center;paint-order:stroke fill;pointer-events:none}
+.ft-text[data-outline-zero="1"]{-webkit-text-stroke-width:0!important;text-shadow:none!important}
