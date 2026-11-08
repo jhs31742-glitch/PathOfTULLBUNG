@@ -6121,6 +6121,13 @@ const auto selected =
                 (!HasView() || !g_api->HasFocus(g_view));
         }
 
+        void RefreshPlayerLevelForMainView()
+        {
+            if (!TULLBUNG::UIProfiles::Busy()) {
+                TULLBUNG::BuildState::ObserveCurrentPlayerLevel();
+            }
+        }
+
         bool ShowMainViewWithPause()
         {
             if (HasOtherPrismaFocus()) {
@@ -6136,6 +6143,7 @@ const auto selected =
                 return false;
             }
 
+            RefreshPlayerLevelForMainView();
             logger::info("[PrismaDebug] Main view focus requested | PauseGame=true");
             return true;
         }
@@ -7016,6 +7024,9 @@ const auto selected =
     void Close()
     {
         std::lock_guard profileOwnerLock(TULLBUNG::UIProfiles::RuntimeMutex());
+        if (g_gameReady && g_mainOpenRequested && IsVisible() && g_api->HasFocus(g_view)) {
+            RefreshPlayerLevelForMainView();
+        }
         g_mainOpenRequested = false;
         TULLBUNG::FloatingTitleMinimal::RefreshTitles();
         // S19-B7: UI hide during combat QA must retain the QA class build.

@@ -7,4 +7,4 @@ set_target_properties(CommonLibSSE::CommonLibSSE PROPERTIES
   INTERFACE_LINK_LIBRARIES "spdlog::spdlog;Microsoft::DirectXTK;Advapi32.lib;bcrypt.lib;D3D11.lib;d3dcompiler.lib;Dbghelp.lib;DXGI.lib;Ole32.lib;Version.lib;\$<\$<BOOL:OFF>:G:/SkyrimDev/PathOfTULLBUNG/lib/commonlibsse-ng/extern/openvr/lib/win64/openvr_api.lib>"
   INTERFACE_LINK_OPTIONS "\$<\$<CONFIG:Debug>:/DEBUG:FULL>"
 )
-set_target_properties(CommonLibSSE::CommonLibSSE PROPERTIES IMPORTED_LOCATION "G:/SkyrimDev/POT_ACV_2c1b24e3/build/commonlibsse-ng/CommonLibSSE.lib")
+set_target_properties(CommonLibSSE::CommonLibSSE PROPERTIES IMPORTED_LOCATION "G:/SkyrimDev/PathOfTULLBUNG/build/msvc/commonlibsse-ng/CommonLibSSE.lib")
