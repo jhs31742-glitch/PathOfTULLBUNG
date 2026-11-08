@@ -936,9 +936,9 @@ body.tull-hud-game-edit #shell{display:none!important}
     top:auto;bottom:8px;padding:3px 6px;
     background:rgba(0,0,0,.55);color:#f5eed6
 }
-body[data-theme="dark-gold"] #tullHudEditorGameOverlay .tull-hud-editor-screen-label{
-    background:#181914;color:var(--ink,#eee4cb);
-    -webkit-text-fill-color:currentColor;border-color:var(--gold,#d5b25e)
+#tullHudEditorGameOverlay[data-hud-theme="dark-gold"] .tull-hud-editor-tag{
+    background:#181914;color:#eee4cb;
+    -webkit-text-fill-color:#eee4cb;border-color:#d5b25e
 }
 `;
 
@@ -961,6 +961,7 @@ body[data-theme="dark-gold"] #tullHudEditorGameOverlay .tull-hud-editor-screen-l
 
         const overlay = document.createElement('div');
         overlay.id = 'tullHudEditorGameOverlay';
+        overlay.dataset.hudTheme = settingsState?.themeId === 'dark-gold' ? 'dark-gold' : '';
         overlay.setAttribute('role', 'region');
         overlay.setAttribute('aria-label','게임 화면 HUD 편집');
 

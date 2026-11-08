@@ -88,7 +88,7 @@ bool Advance(State& s,std::uint64_t& n){
     if(n==kMaxSerial){Stop(s,"serial-limit");return false;}++n;return true;
 }
 void FlushState(State& s){
-    if(!s.api||!s.view||!s.dom||!s.rendererReady||!s.pending||s.inflight||!s.api->IsValid(s.view))return;
+    if(!s.ready||s.restorePending||!s.api||!s.view||!s.dom||!s.rendererReady||!s.pending||s.inflight||!s.api->IsValid(s.view))return;
     std::string payload=R"({"kind":"state","session":)"+std::to_string(s.session)+R"(,"revision":)"+std::to_string(s.revision)+
         R"(,"enabled":)"+(s.ready&&s.enabled&&s.styleReady?"true":"false")+R"(,"style":)"+s.style+R"(,"catalog":)"+s.fonts+R"(,"blocks":[)";
     for(std::size_t i=0;i<6;++i){if(i)payload+=',';payload+=R"({"slot":)"+std::to_string(i+1)+
@@ -288,10 +288,12 @@ void RestorePreference() noexcept
         if(!s.restorePending||!s.ready||UIProfiles::Busy())return;
         s.restorePending=false;
         const auto saved=ProfileFileIO::Read(PreferenceRoot(),kPreferenceFile);
-        if(saved.status==ProfileFileIO::Status::NotFound||saved.status==ProfileFileIO::Status::InvalidRoot)
+        if(saved.status==ProfileFileIO::Status::NotFound||saved.status==ProfileFileIO::Status::InvalidRoot){
+            Changed(s);
             return;
+        }
         Require(saved.status==ProfileFileIO::Status::Ok&&saved.data.size()<=65536);
-        if(saved.data=="{}")return;
+        if(saved.data=="{}"){Changed(s);return;}
         const auto style=POT::Precode::ParseJson(saved.data);
         ValidateStyle(style,s,style.has("request"),true);
         if(!BindVerifiedFrameThread(VerifiedMainThread()))return;
@@ -330,10 +332,24 @@ void SetGameReady(bool ready) noexcept {
     try{std::lock_guard profileLock(UIProfiles::RuntimeMutex());auto& s=S();std::lock_guard lock(s.mutex);
         s.ready=ready;
         s.restorePending=ready;
-        if(!ready){if(VerifiedMainThread())StopFrameTimer(s);Stop(s,"session-reset");Advance(s,s.session);s.styleReady=false;s.style="null";s.styleRevision=0;s.lastEngineFrame=0;}
-        else if(VerifiedMainThread()){StartFrameTimer(s);Capture(s);}
-        else s.dirty.store(true);
-        Changed(s);
+        if(!ready){
+            if(VerifiedMainThread())StopFrameTimer(s);
+            Stop(s,"session-reset");
+            Advance(s,s.session);
+            // Discard the previous save's renderer receipt ownership.
+            s.inflight=false;
+            s.suspended=true;
+            s.styleReady=false;
+            s.style="null";
+            s.styleRevision=0;
+            s.lastEngineFrame=0;
+            s.frameDiagnostics=0;
+        }else if(VerifiedMainThread()){
+            StartFrameTimer(s);
+            Capture(s);
+        }else{
+            s.dirty.store(true);
+        }
     }catch(...){}
 }
 void InvalidateForImport() noexcept {
@@ -459,6 +475,7 @@ void OnVerifiedGameFrame(const FrameContext& context) noexcept {
         if(PrismaBridge::IsVisible()){SuspendForMenu();return;} // Continuous main-UI gate after frame connection.
         if(s.inflight&&std::chrono::steady_clock::now()-s.sentAt>std::chrono::seconds(2)){
             s.inflight=false;
+            logger::warn("[FTMIN] Renderer receipt timeout | Session={} | FlightSession={}",s.session,s.flightSession);
             Stop(s,"transport-timeout");Status(s);return;
         }
         if(s.dirty.load()){Capture(s);Changed(s);}

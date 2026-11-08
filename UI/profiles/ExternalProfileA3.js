@@ -163,7 +163,7 @@ function exportFull(current){
   return {ok:true,raw:out.raw,format:FORMAT,schema:1,warnings:compatible.excluded.map(k=>'legacy-preset-excluded-local-preserved:'+k)};
  }catch(e){return fail(e.message);}
 }
-function prepare(raw,current,slotDefaults={}){
+function prepare(raw,current,slotDefaults={},replaceTitles=false){
  try{
   const incoming=input(raw),base=exportFull(current);requireThat(base.ok,base.reason);
   const full=incoming.browser&&own(incoming.browser.values,keys)&&incoming.native&&own(incoming.native,nativeKeys)&&incoming.customTitles?.length===20;
@@ -175,13 +175,15 @@ function prepare(raw,current,slotDefaults={}){
   if(incoming.native)for(const k of Object.keys(incoming.native))normalized.native[k]=incoming.native[k];
   for(const t of incoming.customTitles||[]){
    const i=Number(t.code.slice(1));
-   if(!t.present)continue;
-   requireThat(current.titleState.customTitles[i].present,'derived-acquisition-change:'+t.code);
-   normalized.customTitles[i]={code:t.code,present:true,before:t.before,after:t.after};
+   if(!replaceTitles&&!t.present)continue;
+   if(!replaceTitles)requireThat(current.titleState.customTitles[i].present,'derived-acquisition-change:'+t.code);
+   normalized.customTitles[i]={code:t.code,present:t.present,before:t.before??'',after:t.after??''};
   }
   const normalizedRaw=JSON.stringify(normalized);requireThat(bytes(normalizedRaw)<=MAX,'normalized-too-large');
   requireThat(contract.parseBundle(normalizedRaw).ok,'normalized-contract-invalid');
-  const plan=legacy.plan(normalizedRaw,current);requireThat(plan.ok,plan.reason);
+  // The Native replacement plan owns title changes; legacy computes settings writes only.
+  const settingsRaw=replaceTitles?JSON.stringify({...normalized,customTitles:JSON.parse(base.raw).customTitles}):normalizedRaw;
+  const plan=legacy.plan(settingsRaw,current);requireThat(plan.ok,plan.reason);
   const excluded=compatibleCurrent(current).excluded;
   plan.browserWrites=plan.browserWrites.filter(w=>!excluded.includes(w.key)||incoming.browser?.values[w.key]!=null);plan.counts.browser=plan.browserWrites.length;
   requireThat(plan.titleWrites.every(t=>t.operation==='update'&&t.before.present&&t.after.present),'nonappearance-title-operation');
@@ -191,9 +193,9 @@ function prepare(raw,current,slotDefaults={}){
    if(key==='tull.font.uiTitle.v1'){const f=JSON.parse(stored);fontRefs.add(f.ui);fontRefs.add(f.title);}
    if(key.startsWith('tull.titleGrid.')){const p=JSON.parse(stored).presentation;for(const v of Object.values(p||{}))fontRefs.add(v.fontId);}
   }
-  return {...plan,applied:false,normalization:'partial-preserve-v1',normalizedRaw,warnings,
+  return {...plan,replaceTitles,applied:false,normalization:'partial-preserve-v1',normalizedRaw,warnings,
    fontTransfer:{references:[...fontRefs].filter(x=>x!=='system'),assetBytesCopied:0},
-   preserved:{...plan.preserved,titlePresence:true,derivedAcquisition:true},requiresA4:true};
+   preserved:{...plan.preserved,titleFavorites:!replaceTitles,titleSelections:!replaceTitles,titlePresence:!replaceTitles,derivedAcquisition:!replaceTitles},requiresA4:true};
  }catch(e){return fail(e.message);}
 }
 // Explicit built-in recovery only: supplied defaults replace Browser values, including null.

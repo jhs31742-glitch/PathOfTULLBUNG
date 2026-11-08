@@ -87,6 +87,8 @@ namespace TULLBUNG::TitleSystem
         [[nodiscard]] CustomTitleRecords MakeCustomTitleRecords() const;
         void ApplyCustomTitleRecords(const CustomTitleRecords& a_records);
 
+        bool ReplaceProfileTitles(const CustomTitleRecords& a_records);
+
         bool ToggleFavorite(std::uint16_t a_titleID);
         bool SelectTitle(
             std::size_t a_slot1Based,

@@ -579,9 +579,8 @@ h1 {
     font-size:10px;
 }
 
-#bridgeStatus {
-    margin-left:auto;
-}
+#potFooterStatus{margin-left:auto;display:flex;align-items:center;gap:12px}
+#shell #footer #potFooterDev{appearance:none!important;display:inline;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:none!important;box-shadow:none!important;text-shadow:inherit!important;color:inherit!important;font:inherit;letter-spacing:inherit;line-height:inherit;min-width:0!important;min-height:0!important;cursor:inherit}
 </style>
 <style id="S18L_CENTER_GRID_FRAMEWORK">
 .centerGridSurface{
@@ -976,11 +975,8 @@ body[data-theme="dark-gold"] select option {
 
     <div id="footer">
 
-        <span>
-            Path of TULLBUNG · Stage 18A Production UI
-        </span>
-
-        <span>
+        <span>Path <button type="button" id="potFooterDev">of</button> TULLBUNG</span>
+        <span id="potFooterStatus">
             <strong id="potDllVersion">DLL —</strong> · <span id="bridgeStatus">C++ Bridge: waiting</span>
         </span>
 
@@ -2599,7 +2595,7 @@ function renderSettings()
         <h1>설정</h1>
 
         <div class="subtitle">
-            Stage 18A · Native Settings
+            Path of TULLBUNG 1.0
         </div>
 
         <div class="card">
@@ -3082,7 +3078,7 @@ function renderSettings()
             });
     detail(
         "설정",
-        "Stage18A Native Settings",
+        "Path of TULLBUNG 1.0",
         "UI 표시와 입력 설정은 DLL의 UISettings가 권위값입니다.",
         "변경 즉시 저장되고 native snapshot으로 다시 동기화됩니다.");
 }
@@ -4717,6 +4713,13 @@ window.addEventListener(
 
 function handleNativeEscape() {
     if (window.TULLImeControls?.blocksEscape()) return;
+    for (const id of ["s19DevEntryConfirm", "potDefaultConfirm"]) {
+        const dialog = document.getElementById(id);
+        if (dialog?.open) {
+            dialog.querySelector("[data-pot-modal-cancel]")?.click();
+            return;
+        }
+    }
     if (settingsState?.hotkeyCaptureActive) {
         send("settings.hotkey.capture.cancel");
         return;
@@ -8432,6 +8435,7 @@ render();
         const result =
             originalVisuals.apply(this,arguments);
         paint();
+        window.TULLFTMinimalClient?.publish();
         return result;
     };
 
@@ -9778,6 +9782,7 @@ html body #titleEditorSurface .title-block-text[data-tull-outline-zero="1"]{
       else
         document.body.style.setProperty(css,choice[part]);
     }
+    window.TULLFTMinimalClient?.publish();
   }
 
   function saveLettering() {
@@ -10815,10 +10820,13 @@ body[data-theme="mabinogi"] .s18g-swatches button[data-saved-index]:not(.s18g-em
   window.TULLFTTitleColors=()=>getTitleColors();
   function getTitleColors(){
     const overrides=window.TULLThemeTitleControlsR103R105?.getOverrides?.()||{};
-    const sample=document.getElementById('tullTitleLetteringSample');
-    const style=getComputedStyle(sample||document.body);
-    return {fill:overrides.fill||normalized(style.getPropertyValue('-webkit-text-fill-color'),'#2A2116'),
-      outline:overrides.outline||normalized(style.getPropertyValue('-webkit-text-stroke-color'),'#FFFFFF'),overrides};
+    const style=getComputedStyle(document.body);
+    const theme=document.body.dataset.theme;
+    const palette=themeColors()?.values;
+    const defaultFill=theme==='dark-gold'?'#EEE4CB':theme==='default'?'#000000':palette?.text||'#2A2116';
+    const defaultOutline=theme==='dark-gold'?'#24251F':theme==='default'?'#FFFFFF':palette?.border||'#FFFFFF';
+    return {fill:overrides.fill||normalized(style.getPropertyValue('--tull-title-theme-fill').trim(),defaultFill),
+      outline:overrides.outline||normalized(style.getPropertyValue('--tull-title-theme-outline').trim(),defaultOutline),overrides};
   }
   function mount(){
     const body=document.getElementById('body');const right=document.getElementById('rightPanel');
@@ -10896,8 +10904,7 @@ body[data-theme="mabinogi"] .s18g-swatches button[data-saved-index]:not(.s18g-em
 .s19-dev-main .card{margin-top:10px}
 .s19-dev-note{margin:6px 0 10px}
 #body.s19-dev-active #rightPanel .s18-reset-jobs-row{display:none!important}
-#footer>span:first-child{cursor:pointer}
-#footer>span:first-child:focus-visible{outline:1px solid var(--gold)}
+#potFooterDev:focus-visible{outline:1px solid var(--gold)}
 
 /* S19-B4: all shared controls live in the right detail column. */
 #rightPanel .s19-dev-controls{margin-top:12px;padding:12px;border:1px solid var(--card-line);background:var(--card-bg);display:grid;gap:7px;min-width:0}
@@ -11245,14 +11252,12 @@ body.s19-dev-confirm-open #rightPanel{overflow:hidden!important}
     }
     renderSettings();
   }
+  const entryKey = 'tull.dev.extensionEntryAccepted.v1';
+  const entryAccepted = () => localStorage.getItem(entryKey) === '1';
   function mountFooter(){
-    const bar = $('footer');
-    const footer = bar?.querySelector('span:first-child');
-    if (!bar || !footer || footer.dataset.s19Bound) return;
-    footer.dataset.s19Bound = '1';
-    footer.setAttribute('role','button');
-    footer.tabIndex = 0;
-    footer.setAttribute('aria-label','S19 개발 시험 메뉴 전환');
+    const button = $('potFooterDev');
+    if (!button || button.dataset.s19Bound) return;
+    button.dataset.s19Bound = '1';
     function toggle(){
       const allowed = authorized();
       console.info('[S19DEV][ENTRY] activation allowed='+allowed);
@@ -11263,9 +11268,25 @@ body.s19-dev-confirm-open #rightPanel{overflow:hidden!important}
       dialog.setAttribute('aria-label','DEV 확장 확인');
       dialog.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(90vw,560px);max-width:560px;padding:22px;border:2px solid var(--gold);border-radius:8px;background:var(--paper2);color:var(--ink);z-index:2147483000;box-shadow:0 12px 36px rgba(0,0,0,.5)';
       dialog.append(make('h3','',wasUnlocked?'DEV 확장 종료':'DEV 확장 진입'));
-      dialog.append(make('p','',wasUnlocked
-        ? '종료 시 QA 직업·노드·DebugJP가 초기화됩니다. 저장하지 않고 qqq로 종료할 시험인가요?'
-        : '진입 시 현재 직업·노드·사용 JP·DebugJP가 초기화됩니다. 별도 시험 세이브에서 진행하나요?'));
+      const warning = make('p','',wasUnlocked
+        ? '종료 시 QA 직업·노드·DebugJP가 초기화됩니다.'
+        : '진입 시 현재 직업·노드·사용 JP·DebugJP가 초기화됩니다.');
+      warning.append(document.createElement('br'),wasUnlocked
+        ? '저장하지 않고 qqq로 종료할 시험인가요?'
+        : '별도 시험 세이브에서 진행하나요?');
+      dialog.append(warning);
+      let entry = null;
+      let entryError = null;
+      if (!wasUnlocked && !entryAccepted()) {
+        entry = document.createElement('input');
+        entry.type = 'password';
+        entry.autocomplete = 'off';
+        entry.spellcheck = false;
+        entry.setAttribute('aria-label','인증 입력');
+        entryError = make('p','','');
+        entryError.setAttribute('role','status');
+        dialog.append(entry,entryError);
+      }
       const buttons = make('div','');
       buttons.style.cssText = 'display:flex;justify-content:flex-end;gap:10px;margin-top:18px';
       const cancel = make('button','settingsButton','취소');
@@ -11279,13 +11300,24 @@ body.s19-dev-confirm-open #rightPanel{overflow:hidden!important}
         dialog.remove();
       };
       dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
+      cancel.setAttribute('data-pot-modal-cancel','');
       cancel.addEventListener('click',close);
       approve.addEventListener('click',()=>{
-        close();
         if (!authorized() || unlocked !== wasUnlocked) {
+          close();
           console.warn('[S19DEV][ENTRY] request rejected: state changed');
           return;
         }
+        if (entry && entry.value.toLowerCase() !== 'tull') {
+          entryError.textContent = '입력값을 다시 확인하세요.';
+          entry.select();
+          return;
+        }
+        if (entry) {
+          localStorage.setItem(entryKey,'1');
+          entry.value = '';
+        }
+        close();
         console.info('[S19DEV][ENTRY] command=dev.extension.toggle');
         pendingDevToggle = true;
         try {
@@ -11295,6 +11327,9 @@ body.s19-dev-confirm-open #rightPanel{overflow:hidden!important}
           throw error;
         }
       });
+      entry?.addEventListener('keydown',event=>{
+        if (event.key==='Enter') { event.preventDefault(); approve.click(); }
+      });
       buttons.append(cancel,approve);
       dialog.append(buttons);
       document.body.append(dialog);
@@ -11303,15 +11338,10 @@ body.s19-dev-confirm-open #rightPanel{overflow:hidden!important}
         if (typeof dialog.showModal === 'function') dialog.showModal();
         else dialog.setAttribute('open','');
       } catch (_) { dialog.setAttribute('open',''); }
+      entry?.focus();
       console.info('[S19DEV][ENTRY] confirmation presented');
     }
-    bar.addEventListener('click',event=>{
-      if (event.target.closest('#bridgeStatus')) return;
-      toggle();
-    });
-    footer.addEventListener('keydown',event=>{
-      if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle();}
-    });
+    button.addEventListener('click',toggle);
   }
   function jpButtons(){
     const toggle=$('developerModeToggle');
@@ -11707,7 +11737,7 @@ body.s19-dev-confirm-open #rightPanel{overflow:hidden!important}
   }
   mountFooter();
   window.TULLS19DevShellB4=Object.freeze({
-    state:()=>({unlocked,activePage,buildSubtab:subtab.build,equipmentSubtab:subtab.equipment}),
+    state:()=>({unlocked,activePage,entryAccepted:entryAccepted(),buildSubtab:subtab.build,equipmentSubtab:subtab.equipment}),
     close:()=>{drop();if(currentTab==='settings')renderSettings();}
   });
 })();
@@ -11899,6 +11929,7 @@ function clearRequest(){
 function requestState(){
   clearTimeout(stateTimer);
   stateRetry=0;
+  if(session){send('ft.state');return;}
   const attempt=()=>{
     if(session)return;
     send('ft.state');
@@ -12047,9 +12078,11 @@ window.tullReceive=function(raw){
   let message;try{message=typeof raw==='string'?JSON.parse(raw):raw;}catch{return result;}
   if(message?.kind==='cpp-ready'){
     const version=document.getElementById('potDllVersion');
-    if(version&&/^\d+\.\d+\.\d+$/.test(message.dllVersion||''))version.textContent='DLL '+message.dllVersion;
+    if(version&&/^\d+\.\d+\.\d+$/.test(message.dllVersion||''))version.textContent='DLL v'+message.dllVersion;
     requestState();
     paint();
+  }else if(message?.kind==='native-main-reopen'){
+    requestState();
   }else if(message?.kind==='title-state'||message?.kind==='title-catalog'){
     publish();
   }

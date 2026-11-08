@@ -1,0 +1,12 @@
+# 동봉 서체 저작권과 사용 조건
+
+- 마비옛체(Mabinogi Classic), 넥슨 워헤이븐체(NEXON Warhaven). © NEXON Korea Corporation. All rights reserved.
+- 던파 비트비트체 v2, 던파 연단된 칼날. Copyright (c) 2023, NEOPLE Inc. (https://www.neople.co.kr). Reserved Font Names ForgedBlade_TTF.ttf, ForgedBlade_OTF.otf, DNFBitBit_ver2_TTF.ttf, DNFBitBit_ver2_OTF.otf.
+- 권리자는 저작권 안내와 함께 원본 서체를 무료로 재배포하거나 소프트웨어에 동봉할 수 있도록 허용합니다. 서체 파일의 수정·편집과 서체 자체의 유료 판매는 금지되며, 출처 표기를 권장합니다. 서체를 사용한 인쇄·광고물은 권리자의 프로모션에 활용될 수 있습니다. 세부 조건과 예외는 공식 안내를 따릅니다.
+
+마비옛체 공식 안내 및 다운로드 https://mabinogi.nexon.com/page/pds/font.asp
+워헤이븐체 공식 안내 및 다운로드 https://brand.nexon.com/ko/ci-brand-guidelines/typeface#section-warhaven
+던파 비트비트체 v2 공식 안내 https://df.nexon.com/data/font/dnfbitbitv2
+던파 연단된 칼날 공식 안내 https://df.nexon.com/data/font
+
+동봉된 TTF 및 OTF는 각 공식 배포 파일에서 가져온 원본입니다.

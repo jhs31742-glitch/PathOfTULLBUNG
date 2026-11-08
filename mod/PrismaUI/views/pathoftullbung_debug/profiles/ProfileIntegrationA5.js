@@ -4,7 +4,7 @@ const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fro
 const owners=window.TULLProfileOwners,clone=x=>JSON.parse(JSON.stringify(x)),same=(a,b)=>JSON.stringify(stable(a))===JSON.stringify(stable(b));
 const keys=window.TULLUIBrowserBackupR2.keys(),baseA3=window.TULLExternalProfileA3;
 const emptySlotDefault=key=>{const name=key==='tull.ui.customPalette.v1'?'palette':key==='tull.ui.shared.colors.v1'?'colors':key==='tull.title.lettering.overrides.v1'?'lettering':key==='tull.font.uiTitle.v1'?'font':key.startsWith('tull.preview.authoring.')?'center':key.startsWith('tull.titleGrid.')?'title':'hud';const owner=owners[name];return key==='tull.hudEditor.selectedPreset.v1'?owner.defaults().selectedPreset:JSON.stringify(key.includes('.preset.')?(owner.presetDefaults?.()||owner.defaults()):owner.defaults());};
-const a3={...baseA3,prepare:(raw,current)=>baseA3.prepare(raw,current,emptySlotDefault)};
+const a3={...baseA3,prepare:(raw,current)=>baseA3.prepare(raw,current,emptySlotDefault,true)};
 const configs=[['palette',k=>k==='tull.ui.customPalette.v1'],['colors',k=>k==='tull.ui.shared.colors.v1'],['lettering',k=>k==='tull.title.lettering.overrides.v1'],['font',k=>k==='tull.font.uiTitle.v1'],['center',k=>k.startsWith('tull.preview.authoring.')],['title',k=>k.startsWith('tull.titleGrid.')],['hud',k=>k.startsWith('tull.hudEditor.')]];
 const importKey='tull.ui.profileImportPending.v1';let importRawMarker=localStorage.getItem(importKey),importMarker=null;
 if(importRawMarker!==null){try{importMarker=JSON.parse(importRawMarker);if(!/^[A-Za-z0-9_-]{1,64}$/.test(importMarker.requestId)||!/^[A-F0-9]{64}$/.test(importMarker.planHash))throw Error('marker');}catch{importMarker={state:'RECOVERY_REQUIRED'};}}
@@ -31,7 +31,7 @@ const ownerAPI={
  async currentGrid(){return clone(owners.center.currentGrid());},
  async preflight(plan,grids){for(const [name] of configs){if(owners[name].busy())throw Error('owner-editor-busy:'+name);for(const w of changed(plan,name)){if(w.after!==null&&!(name==='center'&&w.key.includes('.preset.')))owners[name].preflight?.(w.after);}}const warnings=[...plan.warnings];const missing=owners.font.missing(plan.fontTransfer.references);for(const ref of missing)warnings.push('font-file-missing:'+ref);return {ok:true,geometryUnchanged:true,domVerified:false,warnings};},
  async apply(plan){for(const [name] of configs)if(changed(plan,name).length)owners[name].apply();},
- async applyNativeMirror(snapshot){if(!snapshot?.native)throw Error('native-mirror-missing');mirror=clone(snapshot);if(typeof settingsState!=='undefined'&&settingsState)Object.assign(settingsState,snapshot.native);applySettingsVisuals();if(typeof titleState!=='undefined'&&titleState?.customTitles){const records=snapshot.titleState.customTitles;for(let i=0;i<20;i++){if(titleState.customTitles[i])Object.assign(titleState.customTitles[i],{before:records[i].before,after:records[i].after});}}window.TULLTitleAuthoringProductionR1?.refresh();},
+ async applyNativeMirror(snapshot){if(!snapshot?.native)throw Error('native-mirror-missing');mirror=clone(snapshot);if(typeof settingsState!=='undefined'&&settingsState)Object.assign(settingsState,snapshot.native);applySettingsVisuals();if(typeof titleState!=='undefined'&&titleState?.customTitles){const records=snapshot.titleState.customTitles;titleState.favoriteTitleIDs=[...snapshot.titleState.favoriteTitleIDs];for(let i=0;i<20;i++){if(titleState.customTitles[i])Object.assign(titleState.customTitles[i],{present:records[i].present,favorite:records[i].favorite,before:records[i].before,after:records[i].after});}}window.TULLTitleAuthoringProductionR1?.refresh();},
  async verify(plan){for(const [name] of configs)for(const w of changed(plan,name)){const o=owners[name],m=o.capture();if(name==='palette'&&(!same(m,o.expected(w.after))||!o.verify()))return false;if(name==='colors'&&!same(m.savedColors,o.expected(w.after)))return false;if(name==='lettering'&&(!same(m,o.expected(w.after))||!o.verify()))return false;if(name==='font'&&(!same(m.state,o.expected(w.after))||!o.verify()))return false;if((name==='center'||name==='title')&&w.key.includes('.working.')&&!o.verify(w.after))return false;if(name==='hud'&&!o.verify())return false;}return true;},
  async restore(snapshot){let failed=false;for(const [name] of [...configs].reverse())try{owners[name].restore(clone(snapshot[name]));}catch{failed=true;}if(failed)throw Error('owner-restore');},
  async verifySnapshot(snapshot){for(const [name] of configs)if(!same(owners[name].capture(),snapshot[name]))return false;return true;}
@@ -42,14 +42,32 @@ const importJournal={save(requestId,planHash){if(localStorage.getItem(importKey)
 const tx=window.TULLProfileTransactionA4.create({a3,keys,storage:localStorage,owners:ownerAPI,native,sha256,journal:importJournal});
 const file=a3.create({defaultBrowser:emptySlotDefault,invoke:async request=>{await ready();const {operation,requestId,...fields}=request;return rpc(operation,requestId,fields);}});
 const checkedReply=async(operation,fields)=>{const r=await rpc(operation,id(),fields);if(r.state==='RESULT_UNKNOWN')throw Error('native-result-unknown');if(r.state!=='READY'||r.status!==0)throw Error('native-status:'+r.status+':'+(r.error||r.state));return r;};
+const canAuthorDefault=()=>{const dev=window.TULLS19DevShellB4?.state?.();return !!(settingsState?.developerMode&&dev?.unlocked&&dev.entryAccepted);};
 const manager=window.TULLProfileManagerA5.create({storage:localStorage,a3,keys,nativeKeys:window.TULLUIExternalProfileContractR1.nativeKeys(),owners,sha256,current,blocked:()=>tx.status().blocked||!!foreignImport,fileBlocked:()=>fileGuard.state().blocked,fileState:()=>fileGuard.state().state,resolveFiles:()=>fileGuard.resolve(),
- nativeDefaults:async()=>{await ready();return (await checkedReply('defaults',{})).nativeDefaults;},
+ canAuthorDefault,nativeDefaults:async()=>{await ready();return (await checkedReply('defaults',{})).nativeDefaults;},
  list:async()=>{const r=await file.list(id());if(!r.ok)throw Error(r.reason);return r.files;},
  read:async filename=>{const r=await file.readFile(filename,id());if(!r.ok){const e=Error(r.nativeReason||r.reason);e.profileResult=r;throw e;}return r.raw;},
  infoHash:async filename=>(await checkedReply('fileInfo',{filename})).fileHash,
  store:(filename,raw,expectedHash)=>fileGuard.invoke('store',filename,{raw,expectedHash}),remove:(filename,expectedHash)=>fileGuard.invoke('remove',filename,{expectedHash}),exportCopy:(filename,raw,expectedHash='ABSENT')=>fileGuard.invoke('copy',filename,{raw,expectedHash}),
  apply:(raw,c,builtin)=>builtin?tx.applyDefaults(raw,c,id()):tx.apply(raw,c,id()),resolve:()=>tx.resolve()});
-const resolveTransaction=async()=>{if(foreignImport){if(!foreignImport.requestId||!foreignImport.planHash)return {ok:false,state:'RECOVERY_REQUIRED',reason:'이전 Import 추적 정보 손상 · 수동 복구 확인 필요'};const r=await rpc('query',foreignImport.requestId,{planHash:foreignImport.planHash});return {ok:false,state:'RECOVERY_REQUIRED',reason:'View 재생성 전 요청: '+r.state+' · 이전 Browser 메모리/DOM 원복 근거 없음. 재커밋과 자동 확정을 차단합니다.'};}return manager.state().pendingTarget?manager.resolve():tx.resolve();};
+let pendingDevOff=null;
+const receiveBeforeDevOff=window.tullReceive;
+window.tullReceive=function(payload){
+ const result=receiveBeforeDevOff.apply(this,arguments);
+ if(pendingDevOff&&settingsState?.developerMode===false)pendingDevOff(true);
+ return result;
+};
+async function finishDefaultLoad(result){
+ if(!result.ok||settingsState?.developerMode===false)return result;
+ const off=await new Promise(resolve=>{
+  const finish=confirmed=>{clearTimeout(timer);pendingDevOff=null;resolve(confirmed);};
+  const timer=setTimeout(()=>finish(false),3000);
+  pendingDevOff=finish;
+  try{sendSetting('developerMode','0');}catch{finish(false);}
+ });
+ return off?result:{...result,developerModeOffUnverified:true};
+}
+const resolveTransaction=async()=>{if(foreignImport){if(!foreignImport.requestId||!foreignImport.planHash)return {ok:false,state:'RECOVERY_REQUIRED',reason:'이전 Import 추적 정보 손상 · 수동 복구 확인 필요'};const r=await rpc('query',foreignImport.requestId,{planHash:foreignImport.planHash});return {ok:false,state:'RECOVERY_REQUIRED',reason:'View 재생성 전 요청: '+r.state+' · 이전 Browser 메모리/DOM 원복 근거 없음. 재커밋과 자동 확정을 차단합니다.'};}const target=manager.state().pendingTarget;const result=await (target?manager.resolve():tx.resolve());return target==='@default'?finishDefaultLoad(result):result;};
 // Normal UI exposes four tasks; diagnostics remain available through TULLProfilesA5.
 function failure(action,r){
  const t=tx.status(),native=lastTransactionReply;const clean=x=>String(x||'NONE').replace(/[^A-Za-z0-9_.:|/-]/g,'_').slice(0,256);
@@ -68,6 +86,8 @@ function friendly(r,success='불러오기 완료'){
  if(r.state==='RESULT_UNKNOWN')return '불러오기 결과 확인 필요';
  if(r.state?.startsWith('FILE_')||fileGuard.state().blocked)return '파일 확인 필요';
  if(/profile-already-exists/.test(r.reason||''))return '같은 이름의 파일이 있습니다. 덮어쓰기를 선택하십시오.';
+ if(r.reason==='distribution-default-missing')return '먼저 내부 설정에서 배포용 기본값을 저장하십시오.';
+ if(r.reason==='default-author-required')return '이 작업을 진행할 수 없습니다.';
  if(/builtin-read-only/.test(r.reason||''))return '기본값은 덮어쓸 수 없습니다. 새 이름으로 저장하십시오.';
  if(/export-selection/.test(r.reason||''))return '덮어쓸 JSON 파일을 먼저 선택하십시오.';
  if(/import-filename/.test(r.reason||''))return '불러올 JSON 파일을 먼저 선택하십시오.';
@@ -84,39 +104,158 @@ function friendly(r,success='불러오기 완료'){
  if(/derived-acquisition-change|absent-title-creation/.test(r.reason||''))return '기존 사용자 칭호 확인 필요 — 기존 설정 유지';
  return '실패 — 기존 설정 유지';
 }
-function showResult(r){show(friendly(r));}
+function showResult(r){show(r.developerModeOffUnverified?'설정은 적용됐으나 개발자 모드 해제를 확인하지 못했습니다.':friendly(r));}
 function block(value){uiBlocked=value;let cover=document.getElementById('s20-profile-busy');if(!cover){cover=document.createElement('div');cover.id='s20-profile-busy';cover.style.cssText='position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.25);pointer-events:auto';cover.innerHTML='<div style="margin:20vh auto;padding:24px;max-width:520px;background:var(--paper);color:var(--ink)"><p data-label></p><button type="button" data-query>다시 확인</button></div>';cover.querySelector('[data-query]').onclick=()=>void perform(async()=>{const r=await resolveTransaction();showResult(r);return r;},true);document.body.append(cover);}cover.hidden=!value;cover.querySelector('[data-label]').textContent=(tx.status().blocked||foreignImport)?'설정 결과 확인 필요':'설정 처리 중';cover.querySelector('[data-query]').hidden=actionBusy;}
 function controlsBusy(){const c=document.getElementById('s20-external-profile');if(c)for(const b of c.querySelectorAll('button'))b.disabled=actionBusy;}
 async function perform(action,resolving=false,kind=operation){if(actionBusy)return {ok:false,reason:'operation-in-progress'};if((tx.status().blocked||foreignImport)&&!resolving){const r={ok:false,state:tx.status().state,reason:'import-blocked'};failure(kind,r);show(friendly(r));return r;}actionBusy=true;uiEpoch++;lastTransactionReply=null;show('처리 중');controlsBusy();try{const r=await action();if(r?.ok===false)failure(kind,r);else if(message==='처리 중')show('');return r;}catch(e){const r={ok:false,reason:e.message};failure(kind,r);show(friendly(r));return r;}finally{actionBusy=false;controlsBusy();block(tx.status().blocked||!!foreignImport);window.TULLFTMinimalClient?.endImport?.(!tx.status().blocked&&!foreignImport);}}
 async function importRaw(raw){return perform(async()=>{block(true);const c=await current(),plan=a3.prepare(raw,c);if(!plan.ok)throw Error(plan.reason);const r=await tx.apply(raw,c,id());showResult(r);if(r.ok&&owners.font.missing(plan.fontTransfer.references).length)show('불러오기 완료 — 글꼴 파일 없음, 기본 글꼴 표시');return r;},false,'import_raw');}
 let operation=['save','load','export','import'].includes(lastUI.operation)?lastUI.operation:'save',saveMode=lastUI.saveMode==='existing'?'existing':'new',exportMode=lastUI.exportMode==='existing'?'existing':'new';
+let settingsPage="input", inputTab="general", profileTab=["export","import"].includes(operation)?"external":"internal", openingProfiles=false;
 const cardNode=()=>document.getElementById('s20-external-profile');
 function fillProfiles(){const card=cardNode();if(!card)return;const s=manager.state();for(const select of card.querySelectorAll('[data-profiles]')){const prev=select.value;select.replaceChildren(...s.profiles.filter(p=>select.hasAttribute('data-users')?!p.builtin:true).map(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.builtin?'기본값':p.displayName;return o;}));if([...select.options].some(o=>o.value===prev))select.value=prev;else if([...select.options].some(o=>o.value===s.selected))select.value=s.selected;}paint();}
-function paint(){const card=cardNode();if(!card)return;for(const section of card.querySelectorAll('[data-section]'))section.hidden=section.dataset.section!==operation;for(const b of card.querySelectorAll('[data-task]'))b.setAttribute('aria-pressed',String(b.dataset.task===operation));card.querySelector('[data-save-new]').hidden=saveMode!=='new';card.querySelector('[data-save-existing]').hidden=saveMode!=='existing';card.querySelector('[data-export-new]').hidden=exportMode!=='new';card.querySelector('[data-export-existing]').hidden=exportMode!=='existing';card.querySelector('[data-file-recheck]').hidden=!fileGuard.state().blocked;}
-async function refreshFiles(){const r=await file.list(id());if(!r.ok)throw Error(r.reason);const card=cardNode();if(card)for(const select of card.querySelectorAll('[data-files]')){const prior=select.value;select.replaceChildren(...r.files.filter(name=>!name.startsWith('p_')).map(name=>{const o=document.createElement('option');o.value=name;o.textContent=window.TULLProfileManagerA5.displayFilename(name);return o;}));if(r.files.includes(prior))select.value=prior;}return r;}
+function paint(){const card=cardNode();if(!card)return;for(const section of card.querySelectorAll('[data-section]'))section.hidden=section.dataset.section!==operation;for(const b of card.querySelectorAll('[data-task]')){b.hidden=['export','import'].includes(b.dataset.task)!==(profileTab==='external');b.setAttribute('aria-pressed',String(b.dataset.task===operation));}for(const b of card.querySelectorAll('[data-profile-tab]'))b.setAttribute('aria-selected',String(b.dataset.profileTab===profileTab));card.querySelector('[data-profile-path]').hidden=profileTab!=='external';card.querySelector('[data-default-actions]').hidden=!canAuthorDefault();card.querySelector('[data-save-default]').hidden=profileTab!=='internal';card.querySelector('[data-export-default]').hidden=profileTab!=='external';card.querySelector('[data-save-new]').hidden=saveMode!=='new';card.querySelector('[data-save-existing]').hidden=saveMode!=='existing';card.querySelector('[data-export-new]').hidden=exportMode!=='new';card.querySelector('[data-export-existing]').hidden=exportMode!=='existing';card.querySelector('[data-file-recheck]').hidden=!fileGuard.state().blocked;}
+async function refreshFiles(){const r=await file.list(id());if(!r.ok)throw Error(r.reason);const card=cardNode();if(card)for(const select of card.querySelectorAll('[data-files]')){const prior=select.value;select.replaceChildren(...r.files.filter(name=>!name.startsWith('p_')&&!window.TULLProfileManagerA5.isDefaultFile(name)).map(name=>{const o=document.createElement('option');o.value=name;o.textContent=window.TULLProfileManagerA5.displayFilename(name);return o;}));if(r.files.includes(prior))select.value=prior;}return r;}
 async function recoverFiles(){if(!fileGuard.state().blocked)return {ok:true};const r=await manager.resolveFiles();show(r.ok?(r.state==='FILE_COMMITTED'?(r.receipt.operation==='copy'?'내보내기 완료':'저장 완료'):'실패 — 기존 파일 유지'):'파일 확인 필요');paint();return r;}
-async function profileAction(fn,success,kind=operation){const r=await perform(async()=>{block(true);if(fileGuard.state().blocked)await recoverFiles();const r=await fn();show(friendly(r,success));if(r.ok&&success==='내보내기 완료'&&r.filename)show('내보내기 완료 — '+r.filename);if(r.ok&&success==='불러오기 완료'){const c=await current(),out=a3.exportFull(c),p=out.ok?a3.prepare(out.raw,c):null;if(p?.ok&&owners.font.missing(p.fontTransfer.references).length)show('불러오기 완료 — 글꼴 파일 없음, 기본 글꼴 표시');}return r;},false,kind);fillProfiles();return r;}
-function mount(){if(currentTab!=='settings'||!window.TULLUIBrowserBackupPanelR1.eligible()||cardNode())return;
- if(!document.getElementById('s20-profile-manager-style')){const st=document.createElement('style');st.id='s20-profile-manager-style';st.textContent='#s20-external-profile{display:grid;gap:12px}#s20-external-profile [hidden]{display:none!important}#s20-external-profile .pm-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#s20-external-profile .pm-row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}#s20-external-profile label{display:grid;gap:6px;flex:1;min-width:160px}#s20-external-profile button,#s20-external-profile input,#s20-external-profile select{font:inherit;color:var(--ink);background:var(--card-bg);border:1px solid var(--card-line);padding:8px;min-height:36px;max-width:100%;box-sizing:border-box}#s20-external-profile [data-task][aria-pressed=true]{border-color:var(--gold);box-shadow:inset 0 -2px var(--gold)}#s20-external-profile section{display:grid;gap:10px}#s20-external-profile p{margin:0}';document.head.append(st);}
+async function profileAction(fn,success,kind=operation){const r=await perform(async()=>{block(true);if(fileGuard.state().blocked)await recoverFiles();const r=await fn();show(friendly(r,success));if(r.ok&&success==='내보내기 완료'&&r.filename)show('내보내기 완료 — '+r.filename);if(r.ok&&success==='불러오기 완료'){const c=await current(),out=a3.exportFull(c),p=out.ok?a3.prepare(out.raw,c):null;if(p?.ok&&owners.font.missing(p.fontTransfer.references).length)show('불러오기 완료 — 글꼴 파일 없음, 기본 글꼴 표시');}if(r.developerModeOffUnverified)showResult(r);return r;},false,kind);fillProfiles();return r;}
+function eligible(){
+ if(currentTab!=='settings'||(typeof settingsDevOpen!=='undefined'&&settingsDevOpen))return false;
+ if(document.getElementById('s18ColorSubtabs')||window.TULLS19DevShellB4?.state?.()?.activePage||window.TULLHudEditorProductionR1?.isOpen?.())return false;
+ const center=document.getElementById('centerPanel'),theme=document.getElementById('uiThemeSelect');
+ return !!(center&&theme&&center.contains(theme));
+}
+function mountSettingsLayout(){
+ if(currentTab!=='settings')return false;
+ const left=document.getElementById('leftPanel'), first=left?.querySelector('.leftItem');
+ const center=document.getElementById('centerPanel');
+ if(!first||!center)return false;
+ if(!first.dataset.potSettingsInput){
+  first.dataset.potSettingsInput='1';
+  first.querySelector('.small').textContent='표시·단축키·DEV';
+  first.addEventListener('click',()=>{settingsPage=openingProfiles?'profiles':'input';},true);
+  const item=document.createElement('div');
+  item.id='potSettingsProfiles';
+  item.className='leftItem';
+  item.tabIndex=0;
+  item.setAttribute('role','button');
+  item.innerHTML='<div class="leftTitle">설정 저장·복원</div><div class="small">내부 설정·외부 JSON</div>';
+  item.onclick=()=>{openingProfiles=true;try{first.click();}finally{openingProfiles=false;}};
+  item.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();item.click();}};
+  const dev=left.querySelector('.s19-dev-link');
+  left.insertBefore(item,dev||null);
+ }
+ if(!eligible())return false;
+ const profilePage=settingsPage==='profiles';
+ first.classList.toggle('active',!profilePage);
+ document.getElementById('potSettingsProfiles').classList.toggle('active',profilePage);
+ const heading=center.querySelector('h1');
+ heading.textContent=profilePage?'설정 저장·복원':'UI / 입력';
+ const subtitle=center.querySelector('.subtitle');
+ if(subtitle)subtitle.hidden=true;
+ let tabs=document.getElementById('potSettingsInputTabs');
+ if(!tabs){
+  tabs=document.createElement('div');
+  tabs.id='potSettingsInputTabs';
+  tabs.className='pot-settings-tabs';
+  tabs.setAttribute('role','tablist');
+  tabs.setAttribute('aria-label','UI / 입력');
+  for(const [id,label] of [['general','일반'],['dev','DEV']]){
+   const b=document.createElement('button');
+   b.type='button';b.textContent=label;b.dataset.inputTab=id;b.setAttribute('role','tab');
+   b.onclick=()=>{inputTab=id;mountSettingsLayout();};
+   tabs.append(b);
+  }
+  heading.after(tabs);
+ }
+ tabs.hidden=profilePage;
+ for(const b of tabs.children)b.setAttribute('aria-selected',String(b.dataset.inputTab===inputTab));
+ for(const child of center.querySelectorAll(':scope > .card')){
+  if(child===cardNode())continue;
+  const general=child.querySelector('#backgroundOpacity,#hotkeyCaptureButton,#tullUiFont');
+  const dev=child.querySelector('#developerModeToggle');
+  if(general||dev)child.toggleAttribute('data-pot-settings-hidden',profilePage||(general?inputTab!=='general':inputTab!=='dev'));
+  if(dev&&!child.querySelector('[data-pot-dev-help]')){
+   const help=document.createElement('div');
+   help.className='small';help.dataset.potDevHelp='';
+   help.append('개발자 모드를 켜면 상단 중앙 편집에서 홈 화면 그리드를 조정하고 저장할 수 있습니다.',document.createElement('br'),'DebugJP는 노드 검증에 사용하는 시험용 포인트입니다.');
+   child.append(help);
+  }
+ }
+ return profilePage;
+}
+function installLayoutStyle(){if(document.getElementById('s20-profile-manager-style'))return;const st=document.createElement('style');st.id='s20-profile-manager-style';st.textContent='[data-pot-settings-hidden],#centerPanel .pot-settings-tabs[hidden],#s20-external-profile[hidden]{display:none!important}.pot-settings-tabs{display:flex;gap:8px;margin:12px 0}.pot-settings-tabs button{min-width:120px;padding:8px 14px}.pot-settings-tabs [aria-selected=true]{border-color:var(--gold);box-shadow:inset 0 -2px var(--gold)}#s20-external-profile [data-profile-path]{overflow-wrap:anywhere} #s20-external-profile{display:grid;gap:12px}#s20-external-profile [hidden]{display:none!important}#s20-external-profile .pm-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#s20-external-profile .pm-row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}#s20-external-profile label{display:grid;gap:6px;flex:1;min-width:160px}#s20-external-profile button,#s20-external-profile input,#s20-external-profile select{font:inherit;color:var(--ink);background:var(--card-bg);border:1px solid var(--card-line);padding:8px;min-height:36px;max-width:100%;box-sizing:border-box}#s20-external-profile [data-task][aria-pressed=true]{border-color:var(--gold);box-shadow:inset 0 -2px var(--gold)}#s20-external-profile section{display:grid;gap:10px}#s20-external-profile p{margin:0}';document.head.append(st);}
+function confirmProfileLoad(apply){
+ if(document.getElementById('potDefaultConfirm'))return;
+ const dialog=document.createElement('dialog');
+ dialog.id='potDefaultConfirm';
+ dialog.className='card';
+ dialog.innerHTML='<p>저장된 커스텀 칭호 목록을 적용합니다.<br>저장에서 비어 있는 슬롯의 기존 칭호를 제거합니다.<br>일반·커스텀 칭호의 즐겨찾기가 모두 초기화됩니다.</p><form method="dialog"><button value="cancel" data-pot-modal-cancel autofocus>취소</button> <button value="load">불러오기</button></form>';
+ dialog.addEventListener('close',()=>{
+  dialog.remove();
+  if(dialog.returnValue==='load')void apply();
+ },{once:true});
+ document.body.append(dialog);
+ try{dialog.showModal();}catch{dialog.remove();show('확인 창을 열 수 없습니다.');}
+}
+function mount(){
+ installLayoutStyle();
+ const profilePage=mountSettingsLayout();
+ if(cardNode())cardNode().hidden=!profilePage;
+ if(!profilePage||cardNode())return;
  const card=document.createElement('div');card.id='s20-external-profile';card.className='card';card.innerHTML=
- '<div class="cardTitle">전체 꾸미기 설정</div><div class="pm-actions" role="group" aria-label="전체 꾸미기 설정 작업"><button data-task="save">전체 설정 저장하기</button><button data-task="load">전체 설정 불러오기</button><button data-task="export">전체 설정 외부로 내보내기</button><button data-task="import">전체 설정 외부파일 불러오기</button></div>'+
+ '<div class="pot-settings-tabs" role="tablist" aria-label="설정 저장·복원"><button type="button" role="tab" data-profile-tab="internal">내부 설정</button><button type="button" role="tab" data-profile-tab="external">외부 JSON</button></div>'+
+ '<div class="pm-actions" role="group" aria-label="전체 꾸미기 설정 작업"><button data-task="save">전체 설정 저장하기</button><button data-task="load">전체 설정 불러오기</button><button data-task="export">전체 설정 외부로 내보내기</button><button data-task="import">전체 설정 외부파일 불러오기</button></div>'+
  '<section data-section="save"><label>저장 방법<select data-save-mode><option value="new">새 이름으로 저장</option><option value="existing">기존 저장 덮어쓰기</option></select></label><div data-save-new class="pm-row"><label>저장 이름<input data-display data-profile-display maxlength="80"></label><button data-save-as>저장하기</button></div><div data-save-existing class="pm-row"><label>저장된 설정<select data-profiles data-users data-save-target></select></label><button data-save-refresh>새로고침</button><button data-save>덮어쓰기</button></div></section>'+
  '<section data-section="load"><div class="pm-row"><label>저장된 설정<select data-profiles data-load-target></select></label><button data-refresh>새로고침</button><button data-apply>불러오기 실행</button></div></section>'+
  '<section data-section="export"><label>내보내기 방법<select data-export-mode><option value="new">새 JSON 파일</option><option value="existing">기존 JSON 덮어쓰기</option></select></label><div data-export-new class="pm-row"><label>JSON 파일명 (비우면 자동 이름)<input data-name data-profile-display placeholder="예: 내 꾸미기" maxlength="80"></label></div><div data-export-existing class="pm-row"><label>기존 JSON 파일<select data-files data-export-target></select></label><button data-export-refresh>새로고침</button></div><button data-export>내보내기 실행</button><p class="small">현재 적용된 꾸미기 설정을 문서의 UIProfiles 폴더에 저장합니다. 글꼴 파일은 포함하지 않습니다.</p></section>'+
  '<section data-section="import"><div class="pm-row"><label>JSON 파일<select data-files data-import-target></select></label><button data-list>새로고침</button><button data-import>불러오기 실행</button></div><p class="small">UIProfiles 폴더에 복사한 JSON을 선택하십시오. 검증 후 적용하며 게임 진행은 유지합니다.</p></section>'+
+ '<div data-profile-path class="small"><p>내보내기 파일이 저장되는 위치입니다. 불러올 JSON도 이 폴더에 넣으세요.</p><p><code>%USERPROFILE%\\Documents\\My Games\\Skyrim Special Edition\\PathOfTULLBUNG\\UIProfiles</code></p><p>Windows에서 문서 폴더를 이동했다면 실제 문서 폴더 아래의 같은 하위 경로를 사용합니다.</p></div>'+
+ '<div data-default-actions hidden><button data-save-default>현재 배치를 배포용 기본값으로 저장</button> <button data-export-default>배포용 기본값 JSON 내보내기</button></div>'+
  '<p data-status role="status"></p><button data-file-recheck hidden>파일 다시 확인</button>';
  const panel=document.getElementById('centerPanel');panel.insertBefore(card,[...panel.children].find(n=>n.classList.contains('card'))||null);window.TULLImeControls?.attach(card);card.querySelector('[data-status]').textContent=message;
+ for(const b of card.querySelectorAll('[data-profile-tab]'))b.onclick=()=>{
+  if(profileTab===b.dataset.profileTab)return;
+  profileTab=b.dataset.profileTab;
+  operation=profileTab==='external'?'export':'save';
+  uiEpoch++;show('');paint();
+  if(profileTab==='external')void perform(refreshFiles);
+ };
+ card.querySelector('[data-save-default]').onclick=()=>{
+  if(!canAuthorDefault()||document.getElementById('potDefaultConfirm'))return;
+  const dialog=document.createElement('dialog');
+  dialog.id='potDefaultConfirm';
+  dialog.className='card';
+  dialog.innerHTML='<p>현재 꾸미기 배치를 배포용 기본값으로 저장할까요?</p><form method="dialog"><button value="cancel" data-pot-modal-cancel autofocus>취소</button> <button value="save">저장</button></form>';
+  dialog.addEventListener('close',()=>{
+   dialog.remove();
+   if(dialog.returnValue==='save'&&canAuthorDefault())void profileAction(()=>manager.saveDefault(),'기본값 저장 완료','save_distribution_default');
+  },{once:true});
+  document.body.append(dialog);
+  try{dialog.showModal();}catch{dialog.remove();show('확인 창을 열 수 없습니다.');}
+ };
+ card.querySelector('[data-export-default]').onclick=()=>{
+  if(canAuthorDefault())void profileAction(()=>manager.exportDefault(),'내보내기 완료','export_distribution_default');
+ };
  for(const b of card.querySelectorAll('[data-task]'))b.onclick=()=>{operation=b.dataset.task;uiEpoch++;show('');paint();if(operation==='import'||operation==='export')void perform(refreshFiles);};
  card.querySelector('[data-save-mode]').value=saveMode;card.querySelector('[data-save-mode]').onchange=e=>{saveMode=e.target.value;show('');paint();};card.querySelector('[data-export-mode]').value=exportMode;card.querySelector('[data-export-mode]').onchange=e=>{exportMode=e.target.value;show('');paint();if(exportMode==='existing')void perform(refreshFiles);};
  for(const attr of ['data-refresh','data-save-refresh'])card.querySelector('['+attr+']').onclick=()=>void profileAction(()=>manager.refresh(),'목록 갱신 완료');
  card.querySelector('[data-save-as]').onclick=()=>void profileAction(()=>manager.saveAs(card.querySelector('[data-display]').value),'저장 완료','save_new');
  card.querySelector('[data-save]').onclick=()=>void profileAction(()=>{const id=card.querySelector('[data-save-target]').value;const r=manager.select(id);return r.ok?manager.save():r;},'저장 완료','save_overwrite');
- card.querySelector('[data-apply]').onclick=()=>void profileAction(()=>{const r=manager.select(card.querySelector('[data-load-target]').value);return r.ok?manager.apply():r;},'불러오기 완료',card.querySelector('[data-load-target]').value==='@default'?'load_default':'load_saved');
+ card.querySelector('[data-apply]').onclick=()=>{
+  const target=card.querySelector('[data-load-target]').value;
+  if(!target)return;
+  const load=()=>profileAction(async()=>{const r=manager.select(target);if(!r.ok)return r;const result=await manager.apply();return target==='@default'?finishDefaultLoad(result):result;},'불러오기 완료',target==='@default'?'load_default':'load_saved');
+  if(target==='@default')void load();
+  else confirmProfileLoad(load);
+ };
  for(const attr of ['data-list','data-export-refresh'])card.querySelector('['+attr+']').onclick=()=>void perform(async()=>{await refreshFiles();show('목록 갱신 완료');return {ok:true};});
  card.querySelector('[data-export]').onclick=()=>void profileAction(()=>{const name=exportMode==='existing'?card.querySelector('[data-export-target]').value:card.querySelector('[data-name]').value;return manager.exportCurrent(name,exportMode==='existing');},'내보내기 완료','export_'+exportMode);
- card.querySelector('[data-import]').onclick=()=>void profileAction(()=>manager.applyFile(card.querySelector('[data-import-target]').value),'불러오기 완료','import_file');
+ card.querySelector('[data-import]').onclick=()=>{
+  const filename=card.querySelector('[data-import-target]').value;
+  if(filename)confirmProfileLoad(()=>profileAction(()=>manager.applyFile(filename),'불러오기 완료','import_file'));
+ };
  card.querySelector('[data-file-recheck]').onclick=()=>void perform(recoverFiles,true);
- if(!actionBusy){actionBusy=true;controlsBusy();const mountEpoch=uiEpoch;void (async()=>{try{await ready();if(fileGuard.state().blocked)await recoverFiles();const listed=await manager.refresh();if((listed.fileError||listed.metaError)&&uiEpoch===mountEpoch)show('파일 확인 필요');fillProfiles();}catch{if(uiEpoch===mountEpoch)show('파일 확인 필요');}finally{actionBusy=false;controlsBusy();block(tx.status().blocked||!!foreignImport);}})();}fillProfiles();
+ if(!actionBusy){actionBusy=true;controlsBusy();const mountEpoch=uiEpoch;void (async()=>{try{await ready();if(fileGuard.state().blocked)await recoverFiles();const listed=await manager.refresh();if(profileTab==='external'&&uiEpoch===mountEpoch)await refreshFiles();if((listed.fileError||listed.metaError)&&uiEpoch===mountEpoch)show('파일 확인 필요');fillProfiles();}catch{if(uiEpoch===mountEpoch)show('파일 확인 필요');}finally{actionBusy=false;controlsBusy();block(tx.status().blocked||!!foreignImport);}})();}fillProfiles();
+ if(profileTab==='external'&&!actionBusy)void perform(refreshFiles);
 }
 const oldRender=renderSettings;renderSettings=function(...args){const r=oldRender.apply(this,args);mount();return r;};
 // Freeze other UI writers while a transaction owns the snapshot; do not alter BrowserBackupR2 implementation.

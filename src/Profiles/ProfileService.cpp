@@ -37,11 +37,11 @@ PWSTR value=nullptr;if(FAILED(SHGetKnownFolderPath(FOLDERID_Documents,KF_FLAG_DE
 // Fixed owner only: MO2 can expose a virtual path even for a handle's final name.
 // A read-only mapping identifies the actual backing file; A2 then validates and
 // pins every physical parent, file identity and reparse restriction as before.
-std::filesystem::path IniOwnerRoot(){
- auto virtualRoot=std::filesystem::absolute("Data/SKSE/Plugins");
+std::filesystem::path FixedFileOwnerRoot(const std::filesystem::path& virtualRoot,const std::filesystem::path& filename){
+
  if(!GetModuleHandleW(L"usvfs_x64.dll"))return virtualRoot;
  auto ancestor=virtualRoot.root_path();for(const auto& part:virtualRoot.relative_path()){ancestor/=part;const DWORD attributes=GetFileAttributesW(ancestor.c_str());if(attributes==INVALID_FILE_ATTRIBUTES||(attributes&FILE_ATTRIBUTE_REPARSE_POINT))throw std::runtime_error("ini-physical-owner-parent");}
- const auto target=virtualRoot/L"PathOfTULLBUNG_UI.ini";
+ const auto target=virtualRoot/filename;
  HANDLE file=CreateFileW(target.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
  if(file==INVALID_HANDLE_VALUE)throw std::runtime_error("ini-physical-owner-open");
  struct Close{HANDLE h;~Close(){if(h&&h!=INVALID_HANDLE_VALUE)CloseHandle(h);}} fileGuard{file};
@@ -51,14 +51,22 @@ std::filesystem::path IniOwnerRoot(){
  const void* view=MapViewOfFile(mapping,FILE_MAP_READ,0,0,1);if(!view)throw std::runtime_error("ini-physical-owner-view");
  struct Unmap{const void* p;~Unmap(){UnmapViewOfFile(p);}} viewGuard{view};
  std::wstring device(32768,L'\0');DWORD n=GetMappedFileNameW(GetCurrentProcess(),const_cast<void*>(view),device.data(),static_cast<DWORD>(device.size()));if(!n||n>=device.size())throw std::runtime_error("ini-physical-owner-name");device.resize(n);
- for(wchar_t drive=L'A';drive<=L'Z';++drive){wchar_t name[]{drive,L':',0};wchar_t prefix[32768]{};if(!QueryDosDeviceW(name,prefix,32768))continue;const std::wstring volume(prefix);if(device.size()>volume.size()&&device[volume.size()]==L'\\'&&CompareStringOrdinal(device.data(),static_cast<int>(volume.size()),volume.data(),static_cast<int>(volume.size()),TRUE)==CSTR_EQUAL){std::filesystem::path physical=std::wstring(name)+device.substr(volume.size());if(physical.filename()!=L"PathOfTULLBUNG_UI.ini")throw std::runtime_error("ini-physical-owner-filename");if(diagnosticSink){const auto owner=physical.u8string();try{diagnosticSink("INI owner | source=MO2_mapped_file | physical="+std::string(reinterpret_cast<const char*>(owner.data()),owner.size()));}catch(...){}}return physical.parent_path();}}
+ for(wchar_t drive=L'A';drive<=L'Z';++drive){wchar_t name[]{drive,L':',0};wchar_t prefix[32768]{};if(!QueryDosDeviceW(name,prefix,32768))continue;const std::wstring volume(prefix);if(device.size()>volume.size()&&device[volume.size()]==L'\\'&&CompareStringOrdinal(device.data(),static_cast<int>(volume.size()),volume.data(),static_cast<int>(volume.size()),TRUE)==CSTR_EQUAL){std::filesystem::path physical=std::wstring(name)+device.substr(volume.size());if(physical.filename()!=filename)throw std::runtime_error("ini-physical-owner-filename");if(diagnosticSink){const auto owner=physical.u8string();try{diagnosticSink("Fixed profile owner | source=MO2_mapped_file | physical="+std::string(reinterpret_cast<const char*>(owner.data()),owner.size()));}catch(...){}}return physical.parent_path();}}
  throw std::runtime_error("ini-physical-owner-volume");
+}
+std::filesystem::path IniOwnerRoot(){
+ return FixedFileOwnerRoot(std::filesystem::absolute("Data/SKSE/Plugins"),L"PathOfTULLBUNG_UI.ini");
+}
+constexpr std::string_view kDeploymentDefault="POT_Deployment_Default.json";
+std::filesystem::path ProfileOwnerRoot(std::string_view filename){
+ if(filename!=kDeploymentDefault)return ProfileRoot();
+ return FixedFileOwnerRoot(std::filesystem::absolute("Data/SKSE/Plugins/PathOfTULLBUNG"),L"POT_Deployment_Default.json");
 }
 std::string NativeJSON(const UISettings::Settings& s=UISettings::Get()){std::string r="{\"themeId\":"+Q(s.themeId)+",\"uiBackgroundOpacity\":"+N(s.uiBackgroundOpacity)+",\"hudMaster\":"+(s.hud.masterVisible?"true":"false");auto h=[&](const char* name,const UISettings::HudElementSettings& e){std::string k=name;r+=","+Q(k+"Visible")+":"+(e.visible?"true":"false")+","+Q(k+"X")+":"+N(e.x)+","+Q(k+"Y")+":"+N(e.y)+","+Q(k+"Scale")+":"+N(e.scale)+","+Q(k+"Opacity")+":"+N(e.opacity);};h("hudVoid",s.hud.voidHud);h("hudComposure",s.hud.composureHud);h("hudQuiet",s.hud.quietProcessingHud);return r+"}";}
 std::string TitleJSON(){const auto& t=TitleRuntime::GetRuntime();auto records=t.MakeCustomTitleRecords();std::string r="{\"customTitles\":[";for(size_t i=0;i<20;i++){const auto& x=records[i];if(i)r+=",";r+="{\"id\":"+std::to_string(1000+i)+",\"code\":"+Q("C"+std::string(i<10?"0":"")+std::to_string(i))+",\"present\":"+(x.present?"true":"false")+",\"favorite\":"+(x.favorite?"true":"false")+",\"before\":"+Q(x.before)+",\"after\":"+Q(x.after)+"}";}r+="],\"slots\":[";for(size_t i=0;i<6;i++){if(i)r+=",";r+="{\"titleID\":"+std::to_string(t.Slots()[i].selectedTitleID)+"}";}r+="],\"favoriteTitleIDs\":[";bool first=true;for(auto id:t.FavoriteTitleIDs()){if(!first)r+=",";first=false;r+=std::to_string(id);}return r+"]}";}
 std::string GetString(const Json& j,const char* k,size_t max){const auto& v=j.at(k);if(v.type!=Json::String||v.s.size()>max)throw std::runtime_error("packet-string");return v.s;}
 std::string ReceiptJSON(const FileReceipt* receipt=nullptr){if(!receipt)receipt=fileReceipt.get();if(!receipt)return "null";auto& f=*receipt;return "{\"requestId\":"+Q(f.id)+",\"operation\":"+Q(f.op)+",\"filename\":"+Q(f.name)+",\"beforeHash\":"+Q(f.before)+",\"afterHash\":"+Q(f.after)+",\"status\":"+std::to_string(f.status)+"}";}
-bool FileVerified(const FileReceipt* receipt){if(!receipt||receipt->status==9||receipt->status==10)return false;return FileHash(ProfileRoot(),receipt->name)==(receipt->status==0?receipt->after:receipt->before); }
+bool FileVerified(const FileReceipt* receipt){if(!receipt||receipt->status==9||receipt->status==10)return false;return FileHash(ProfileOwnerRoot(receipt->name),receipt->name)==(receipt->status==0?receipt->after:receipt->before); }
 bool ID(const std::string& id){return !id.empty()&&id.size()<=64&&std::all_of(id.begin(),id.end(),[](unsigned char c){return (c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'||c=='-';});}
 }
 void SetDiagnosticSink(DiagnosticSink sink){std::lock_guard lock(RuntimeMutex());diagnosticSink=sink;}
@@ -84,23 +92,23 @@ std::string HandleRequest(const std::string& packet){std::lock_guard lock(Runtim
  else if(operation=="defaults"){state="READY";body=",\"nativeDefaults\":"+NativeJSON(UISettings::Settings{});}
  else if(operation=="hash"){hash=Hash(GetString(j,"raw",2000001));state="READY";}
  else if(operation=="list"){auto root=ProfileRoot();auto result=ProfileFileIO::List(root);if(result.status==ProfileFileIO::Status::InvalidRoot&&!std::filesystem::exists(root)){body=",\"files\":[]";}else{status=static_cast<int>(result.status);body=",\"files\":[";for(size_t i=0;i<result.names.size();i++){if(i)body+=",";body+=Q(result.names[i]);}body+="]";}state="READY";}
- else if(operation=="fileInfo"){auto name=GetString(j,"filename",53);if(!ProfileFileIO::ValidName(name))throw std::runtime_error("managed-profile-filename");auto r=ProfileFileIO::Read(ProfileRoot(),name);status=static_cast<int>(r.status);if(status==0)body=",\"fileHash\":"+Q(Hash(r.data));state="READY";}
+ else if(operation=="fileInfo"){auto name=GetString(j,"filename",53);if(!ProfileFileIO::ValidName(name))throw std::runtime_error("managed-profile-filename");auto r=ProfileFileIO::Read(ProfileOwnerRoot(name),name);status=static_cast<int>(r.status);if(status==0)body=",\"fileHash\":"+Q(Hash(r.data));state="READY";}
  else if(operation=="store"||operation=="remove"||operation=="copy"){
   if(Busy())throw std::runtime_error("import-busy");
   if(fileReceipt||fileUsed.contains(request)||fileUsed.size()>=4096)throw std::runtime_error("file-receipt-pending-or-request-reused");
   auto name=GetString(j,"filename",53),expected=GetString(j,"expectedHash",64);
   if(!ProfileFileIO::ValidName(name)||(operation=="copy"?name.starts_with("p_"):!name.starts_with("p_")))throw std::runtime_error("managed-profile-filename");
-  auto root=ProfileRoot();auto prior=ProfileFileIO::Read(root,name);bool fresh=expected=="ABSENT";
+  auto root=ProfileOwnerRoot(name);auto prior=ProfileFileIO::Read(root,name);bool fresh=expected=="ABSENT";if(name==kDeploymentDefault&&fresh)throw std::runtime_error("deployment-default-missing");
   if(fresh){if((operation!="store"&&operation!="copy")||prior.status!=ProfileFileIO::Status::NotFound&&!(prior.status==ProfileFileIO::Status::InvalidRoot&&!std::filesystem::exists(root)))throw std::runtime_error("profile-already-exists");}
   else{if(expected.size()!=64||prior.status!=ProfileFileIO::Status::Ok||Hash(prior.data)!=expected)throw std::runtime_error("profile-source-drift");}
-  std::string raw;if(operation=="store"||operation=="copy"){raw=GetString(j,"raw",1000000);CheckProfile(raw,true);}
+  std::string raw;if(operation=="store"||operation=="copy"){raw=GetString(j,"raw",1000000);const auto profile=CheckProfile(raw,true);if(name==kDeploymentDefault)for(const auto& title:profile.at("customTitles").a)if(title.at("present").b)throw std::runtime_error("deployment-default-title");}
   fileUsed.insert(request);fileReceipt=std::make_unique<FileReceipt>(FileReceipt{request,operation,name,fresh?"ABSENT":Hash(prior.data),operation=="remove"?"ABSENT":Hash(raw),10});
   if(operation=="store"||operation=="copy")status=static_cast<int>(ProfileFileIO::WriteIf(root,name,raw,prior.data,fresh));
   else status=static_cast<int>(ProfileFileIO::RemoveIf(root,name,prior.data));
   fileReceipt->status=status;
   state="READY";
  }
- else if(operation=="read"||operation=="write"){auto name=GetString(j,"filename",53);auto root=ProfileRoot();if(operation=="read"){auto r=ProfileFileIO::Read(root,name);status=static_cast<int>(r.status);if(status==0){CheckProfile(r.data);body=",\"raw\":"+Q(r.data);}}else{auto raw=GetString(j,"raw",1000000);CheckProfile(raw,true);if(name.starts_with("p_"))throw std::runtime_error("managed-profile-requires-compare-write");if(Busy()||fileReceipt)throw std::runtime_error("import-busy");status=static_cast<int>(ProfileFileIO::Write(root,name,raw));}state="READY";}
+ else if(operation=="read"||operation=="write"){auto name=GetString(j,"filename",53);auto root=ProfileOwnerRoot(name);if(operation=="read"){auto r=ProfileFileIO::Read(root,name);status=static_cast<int>(r.status);if(status==0){CheckProfile(r.data);body=",\"raw\":"+Q(r.data);}}else{auto raw=GetString(j,"raw",1000000);CheckProfile(raw,true);if(name.starts_with("p_")||name==kDeploymentDefault)throw std::runtime_error("managed-profile-requires-compare-write");if(Busy()||fileReceipt)throw std::runtime_error("import-busy");status=static_cast<int>(ProfileFileIO::Write(root,name,raw));}state="READY";}
  else{hash=GetString(j,"planHash",64);if(operation=="prepare"){
   if(!available||Busy()||used.contains(request)||used.size()>=4096)throw std::runtime_error("busy-or-request-reused");auto raw=GetString(j,"normalizedRaw",1000000),wire=GetString(j,"wire",1000000);used.insert(request);activeID=request;activeHash=hash;active=std::make_unique<Transaction>(TitleRuntime::GetRuntime());
   active->Prepare(IniOwnerRoot(),request,hash,raw,wire);state=active->State();error=active->Error();

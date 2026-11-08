@@ -4,7 +4,7 @@ const clone=x=>JSON.parse(JSON.stringify(x)), same=(a,b)=>JSON.stringify(a)===JS
 const need=(v,m)=>{if(!v)throw new Error(m);};
 const hex=s=>Array.from(new TextEncoder().encode(s),v=>v.toString(16).padStart(2,'0')).join('');
 const scalar=v=>typeof v==='boolean'?(v?'1':'0'):String(v);
-function wireFor(plan){return plan.nativeWrites.map(w=>w.key+'='+hex(scalar(w.before))+':'+hex(scalar(w.after))).join('\n')+(plan.nativeWrites.length?'\n':'')+'--TITLES--\n'+plan.titleWrites.map(t=>t.id+':'+hex(t.before.before)+':'+hex(t.before.after)+':'+hex(t.after.before)+':'+hex(t.after.after)+'\n').join('');}
+function wireFor(plan){return plan.nativeWrites.map(w=>w.key+'='+hex(scalar(w.before))+':'+hex(scalar(w.after))).join('\n')+(plan.nativeWrites.length?'\n':'')+(plan.replaceTitles?'--REPLACE-TITLES--\n':'--TITLES--\n')+plan.titleWrites.map(t=>t.id+':'+hex(t.before.before)+':'+hex(t.before.after)+':'+hex(t.after.before)+':'+hex(t.after.after)+'\n').join('');}
 function create({a3,keys,storage,owners,native,sha256,journal}){
  need(a3&&Array.isArray(keys)&&keys.length===16&&new Set(keys).size===16,'contracts');
  for(const m of ['capture','currentGrid','preflight','apply','verify','restore','verifySnapshot'])need(typeof owners[m]==='function','owner-adapter:'+m);

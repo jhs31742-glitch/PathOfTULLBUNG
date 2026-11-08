@@ -1,6 +1,8 @@
 (() => {
 'use strict';
 const DEFAULT='@default',META='tull.ui.profileCatalog.v1',FORMAT='TULLBUNG_UI_ONLY_PROFILE';
+const defaultFile='POT_Deployment_Default.json';
+const isDefaultFile=name=>typeof name==='string'&&name.toLowerCase()===defaultFile.toLowerCase();
 const clone=x=>JSON.parse(JSON.stringify(x)),need=(v,m)=>{if(!v)throw Error(m);};
 const stable=x=>Array.isArray(x)?x.map(stable):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,stable(x[k])])):x;
 const validDisplay=v=>typeof v==='string'&&v.trim().length>0&&v.trim().length<=80&&!/[\x00-\x1f\x7f]/.test(v);
@@ -24,16 +26,45 @@ function create(d){
  async function run(fn,resolving=false){if(busy)return {ok:false,reason:'operation-in-progress'};if(d.blocked()&&!resolving)return {ok:false,reason:'import-blocked'};busy=true;try{return await fn();}catch(e){return {...(e.profileResult||{}),ok:false,reason:e.message,...(e.fileState?{state:e.fileState,description:fileError}:{} )};}finally{busy=false;}}
  const requireMutable=()=>need(!fileRecovery&&!d.fileBlocked?.(),'profile-file-recovery-required');
  const fileFault=e=>{if(/native-status:(9|10)/.test(e.message)){fileRecovery=true;e.fileState='FILE_RECOVERY_REQUIRED';fileError='프로필 파일 복구 확인이 필요합니다. 추가 파일 변경과 사용자 프로필 적용을 차단합니다.';}else if(/native-response-timeout|native-response:|native-result-unknown|session-mismatch/.test(e.message)){fileRecovery=true;e.fileState='FILE_RESULT_UNKNOWN';fileError='프로필 파일 작업 결과를 확인하지 못했습니다. 추가 파일 변경과 사용자 프로필 적용을 차단합니다.';}if(!e.fileState&&d.fileBlocked?.()){fileRecovery=true;e.fileState=d.fileState?.()||'FILE_RECOVERY_REQUIRED';fileError='프로필 파일 작업 복구 확인이 필요합니다. 결과 재조회 전 추가 변경을 차단합니다.';}return e;};
- async function defaults(){const native=await d.nativeDefaults(),values=Object.fromEntries(d.keys.map(k=>[k,null]));for(const [key,owner] of [['tull.ui.customPalette.v1','palette'],['tull.ui.shared.colors.v1','colors'],['tull.title.lettering.overrides.v1','lettering'],['tull.font.uiTitle.v1','font'],['tull.preview.authoring.working.v1','center'],['tull.titleGrid.working.v1','title']])values[key]=JSON.stringify(d.owners[owner].defaults());for(const key of d.keys)if(key.includes('.preset.')){const owner=key.startsWith('tull.preview.authoring.')?'center':key.startsWith('tull.titleGrid.')?'title':'hud';values[key]=JSON.stringify(d.owners[owner].presetDefaults?.()||d.owners[owner].defaults());}values['tull.hudEditor.selectedPreset.v1']=d.owners.hud.defaults().selectedPreset;const doc={format:FORMAT,schema:1,browser:{schema:2,values},native,customTitles:Array.from({length:20},(_,i)=>({code:'C'+String(i).padStart(2,'0'),present:false}))};const raw=JSON.stringify(doc);need(d.a3.inspect(raw).ok,'builtin-default-validation');return raw;}
+ async function builtinDefaults(){const native=await d.nativeDefaults(),values=Object.fromEntries(d.keys.map(k=>[k,null]));for(const [key,owner] of [['tull.ui.customPalette.v1','palette'],['tull.ui.shared.colors.v1','colors'],['tull.title.lettering.overrides.v1','lettering'],['tull.font.uiTitle.v1','font'],['tull.preview.authoring.working.v1','center'],['tull.titleGrid.working.v1','title']])values[key]=JSON.stringify(d.owners[owner].defaults());for(const key of d.keys)if(key.includes('.preset.')){const owner=key.startsWith('tull.preview.authoring.')?'center':key.startsWith('tull.titleGrid.')?'title':'hud';values[key]=JSON.stringify(d.owners[owner].presetDefaults?.()||d.owners[owner].defaults());}values['tull.hudEditor.selectedPreset.v1']=d.owners.hud.defaults().selectedPreset;const doc={format:FORMAT,schema:1,browser:{schema:2,values},native,customTitles:Array.from({length:20},(_,i)=>({code:'C'+String(i).padStart(2,'0'),present:false,before:'',after:''}))};const raw=JSON.stringify(doc);need(d.a3.inspect(raw).ok,'builtin-default-validation');return raw;}
+ async function defaults(){
+  return d.read(defaultFile);
+ }
+ const requireAuthor=()=>need(d.canAuthorDefault?.(),'default-author-required');
+ async function defaultWrite(filename,raw,expectedHash){
+  requireAuthor();
+  try{await d.exportCopy(filename,raw,expectedHash);}catch(e){throw fileFault(e);}
+  return {ok:true,filename,settingsApplied:false};
+ }
  async function readSelected(){if(meta.selected===DEFAULT)return {raw:await defaults(),builtin:true};need(d.a3.validName(meta.selected)&&meta.selected.startsWith('p_'),'profile-selection');return {raw:await d.read(meta.selected),builtin:false};}
  async function fingerprint(current,builtin){const exported=d.a3.exportFull(current);need(exported.ok,exported.reason);const value=JSON.parse(exported.raw);return d.sha256(JSON.stringify(stable(value)));}
  async function markApplied(target){meta.applied=target;meta.fingerprint=await fingerprint(await d.current(),target===DEFAULT);const metadataSaved=metadata();pendingTarget=null;return {metadataSaved};}
  async function checkedStore(filename,raw,expectedHash){try{return await d.store(filename,raw,expectedHash);}catch(e){throw fileFault(e);}}
  const freshName=()=>('p_'+Date.now().toString(16)+'_'+(++serial).toString(16)+'.json');
- async function add(raw,displayName){requireMutable();need(validDisplay(displayName),'display-name');need(!metaError,'catalog-recovery-required');const inspected=d.a3.inspect(raw);need(inspected.ok,inspected.reason);const v=inspected.value,currentTitles=(await d.current()).titleState.customTitles;for(const t of v.customTitles||[])if(t.present)need(currentTitles[Number(t.code.slice(1))]?.present,'derived-acquisition-change:'+t.code);const full=v.browser&&d.keys.every(k=>Object.prototype.hasOwnProperty.call(v.browser.values,k))&&v.native&&d.nativeKeys.every(k=>Object.prototype.hasOwnProperty.call(v.native,k))&&v.customTitles?.length===20;
+ async function add(raw,displayName){requireMutable();need(validDisplay(displayName),'display-name');need(!metaError,'catalog-recovery-required');const inspected=d.a3.inspect(raw);need(inspected.ok,inspected.reason);const v=inspected.value;const full=v.browser&&d.keys.every(k=>Object.prototype.hasOwnProperty.call(v.browser.values,k))&&v.native&&d.nativeKeys.every(k=>Object.prototype.hasOwnProperty.call(v.native,k))&&v.customTitles?.length===20;
   if(!full){const plan=d.a3.prepare(raw,await d.current());need(plan.ok,'부분 JSON 등록 불가: '+plan.reason+'; 기본 프로필 복구 후 다시 시도');raw=plan.normalizedRaw;}
   const filename=freshName();await checkedStore(filename,raw,'ABSENT');meta.names.push({filename,displayName:displayName.trim()});meta.selected=filename;const metadataSaved=metadata();profiles.push({id:filename,displayName:displayName.trim(),builtin:false});return {ok:true,filename,metadataSaved,settingsApplied:false};}
  return Object.freeze({state,defaults,
+  saveDefault:()=>run(async()=>{
+   requireMutable();requireAuthor();
+   const expectedHash=await d.infoHash(defaultFile);
+   const current=await d.current(), builtin=JSON.parse(await builtinDefaults());
+   const browser={...current.browser};
+   for(const key of d.keys)if(key.includes('.preset.'))browser[key]=builtin.browser.values[key];
+   const exported=d.a3.exportFull({...current,browser});
+   need(exported.ok,exported.reason);
+   const value=JSON.parse(exported.raw);
+   value.customTitles=builtin.customTitles;
+   const raw=JSON.stringify(value), plan=d.a3.prepareDefaults(raw,current);
+   need(plan.ok,plan.reason);
+   return defaultWrite(defaultFile,raw,expectedHash);
+  }),
+  exportDefault:()=>run(async()=>{
+   requireMutable();requireAuthor();
+   const raw=await defaults(), plan=d.a3.prepareDefaults(raw,await d.current());
+   need(plan.ok,plan.reason);
+   return defaultWrite('POT_Default_'+Date.now().toString(16)+'.json',raw,'ABSENT');
+  }),
   refresh:()=>run(async()=>{try{const files=await d.list();profiles=[{id:DEFAULT,displayName:'기본 프로필',builtin:true},...files.filter(f=>f.startsWith('p_')).map(id=>({id,displayName:nameOf(id),builtin:false}))];fileError='';if(meta.applied&&meta.applied!==DEFAULT&&!files.includes(meta.applied)){meta.applied=null;meta.fingerprint=null;metadata();}if(meta.selected!==DEFAULT&&!files.includes(meta.selected)){meta.selected=DEFAULT;metadata();}}catch(e){fileError='프로필 파일 목록 오류: '+e.message;profiles=[{id:DEFAULT,displayName:'기본 프로필',builtin:true}];}return {ok:true,...state()};}),
   select(id){if(busy||d.blocked())return {ok:false,reason:'operation-in-progress'};if(!profiles.some(x=>x.id===id))return {ok:false,reason:'profile-not-found'};meta.selected=id;return {ok:true,metadataSaved:metadata(),settingsApplied:false};},
   apply:()=>run(async()=>{const target=meta.selected;need((!fileRecovery&&!d.fileBlocked?.())||target===DEFAULT,'profile-file-recovery-required');const value=await readSelected(),c=await d.current();pendingTarget=target;const r=await d.apply(value.raw,c,value.builtin);if(r.ok){try{return {...r,...await markApplied(target)};}catch(e){pendingTarget=null;return {...r,trackingError:e.message};}}if(!d.blocked())pendingTarget=null;return r;}),
@@ -43,12 +74,12 @@ function create(d){
   saveAs:displayName=>run(async()=>{const exported=d.a3.exportFull(await d.current());need(exported.ok,exported.reason);const r=await add(exported.raw,displayName);meta.fingerprint=await fingerprint(await d.current(),false);return {...r,metadataSaved:metadata(),warnings:exported.warnings||[]};}),
   importRaw:(raw,displayName)=>run(()=>add(raw,displayName)),
   importFromFile:(filename,displayName)=>run(async()=>add(await d.read(filename),displayName)),
-  exportCurrent:(filename,overwrite=false)=>run(async()=>{requireMutable();if(overwrite)need(d.a3.validName(filename)&&!filename.startsWith('p_'),'export-selection');filename=exportName(filename,d.a3.validName);need(d.a3.validName(filename)&&!filename.startsWith('p_'),'export-filename');const expectedHash=overwrite?await d.infoHash(filename):'ABSENT';const exported=d.a3.exportFull(await d.current());need(exported.ok,exported.reason);try{await d.exportCopy(filename,exported.raw,expectedHash);}catch(e){throw fileFault(e);}return {ok:true,filename,settingsApplied:false,warnings:exported.warnings||[]};}),
-  applyFile:filename=>run(async()=>{requireMutable();need(d.a3.validName(filename),'import-filename');const raw=await d.read(filename),c=await d.current();const validation=d.a3.prepare(raw,c);need(validation.ok,validation.reason);pendingTarget=filename;const r=await d.apply(raw,c,false);if(r.ok){try{return {...r,...await markApplied(filename)};}catch(e){pendingTarget=null;return {...r,trackingError:e.message};}}if(!d.blocked())pendingTarget=null;return r;}),
-  exportSelected:filename=>run(async()=>{requireMutable();need(d.a3.validName(filename)&&!filename.startsWith('p_'),'export-filename');const value=await readSelected();try{await d.exportCopy(filename,value.raw);}catch(e){throw fileFault(e);}return {ok:true,filename,settingsApplied:false};}),
+  exportCurrent:(filename,overwrite=false)=>run(async()=>{requireMutable();if(overwrite)need(d.a3.validName(filename)&&!filename.startsWith('p_'),'export-selection');filename=exportName(filename,d.a3.validName);need(d.a3.validName(filename)&&!filename.startsWith('p_')&&!isDefaultFile(filename),'export-filename');const expectedHash=overwrite?await d.infoHash(filename):'ABSENT';const exported=d.a3.exportFull(await d.current());need(exported.ok,exported.reason);try{await d.exportCopy(filename,exported.raw,expectedHash);}catch(e){throw fileFault(e);}return {ok:true,filename,settingsApplied:false,warnings:exported.warnings||[]};}),
+  applyFile:filename=>run(async()=>{requireMutable();need(d.a3.validName(filename)&&!isDefaultFile(filename),'import-filename');const raw=await d.read(filename),c=await d.current();const validation=d.a3.prepare(raw,c);need(validation.ok,validation.reason);pendingTarget=filename;const r=await d.apply(raw,c,false);if(r.ok){try{return {...r,...await markApplied(filename)};}catch(e){pendingTarget=null;return {...r,trackingError:e.message};}}if(!d.blocked())pendingTarget=null;return r;}),
+  exportSelected:filename=>run(async()=>{requireMutable();need(d.a3.validName(filename)&&!filename.startsWith('p_')&&!isDefaultFile(filename),'export-filename');const value=await readSelected();try{await d.exportCopy(filename,value.raw);}catch(e){throw fileFault(e);}return {ok:true,filename,settingsApplied:false};}),
   remove:()=>run(async()=>{requireMutable();need(meta.selected!==DEFAULT,'builtin-read-only');const filename=meta.selected,expected=await d.infoHash(filename);try{await d.remove(filename,expected);}catch(e){throw fileFault(e);}meta.names=meta.names.filter(x=>x.filename!==filename);meta.selected=DEFAULT;if(meta.applied===filename){meta.applied=null;meta.fingerprint=null;}profiles=profiles.filter(x=>x.id!==filename);return {ok:true,metadataSaved:metadata(),settingsApplied:false};}),
   inspectStatus:()=>run(async()=>{try{const fp=await fingerprint(await d.current(),meta.applied===DEFAULT);return {ok:true,...state(),dirty:meta.fingerprint===null?null:fp!==meta.fingerprint,warnings:d.a3.exportFull(await d.current()).warnings||[]};}catch(e){return {ok:true,...state(),dirty:null,currentInvalid:e.message};}})
  });
 }
-window.TULLProfileManagerA5=Object.freeze({create,displayFilename,metadataKey:META,defaultID:DEFAULT});
+window.TULLProfileManagerA5=Object.freeze({create,displayFilename,isDefaultFile,metadataKey:META,defaultID:DEFAULT});
 })();

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 project(
     pathoftullbung
-    VERSION 0.9.0
+    VERSION 1.0.0
     DESCRIPTION "Path of TULLBUNG SKSE plugin for Skyrim SE/AE"
     LANGUAGES CXX)
 

@@ -284,6 +284,28 @@ namespace TULLBUNG::TitleSystem
         }
     }
 
+    bool Runtime::ReplaceProfileTitles(const CustomTitleRecords& a_records)
+    {
+        ApplyCustomTitleRecords(a_records);
+        for (std::size_t i = 0; i < kCustomTitleCount; ++i) {
+            const auto& actual = customTitles_[i];
+            const auto& expected = a_records[i];
+            if (actual.present != expected.present || actual.before != expected.before ||
+                actual.after != expected.after) {
+                return false;
+            }
+            customTitles_[i].favorite = false;
+        }
+        favorites_.reset();
+        for (auto& slot : slots_) {
+            if (IsCustomTitleID(slot.selectedTitleID) &&
+                !ValidateSelection(slot, slot.selectedTitleID, slot.selectedSegmentIndex)) {
+                ClearSelection(slot);
+            }
+        }
+        return true;
+    }
+
     bool Runtime::ToggleFavorite(std::uint16_t a_titleID)
     {
         std::lock_guard profileOwnerLock(UIProfiles::RuntimeMutex());

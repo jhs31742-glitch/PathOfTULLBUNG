@@ -69,10 +69,13 @@ struct Faults{std::string at;bool diskRecovery=false,memoryRecovery=false,titleR
 class Transaction {
  io::FixedIniTransaction disk; ui::Settings old{},next{}; ts::Runtime& titles;
  ts::CustomTitleRecords oldTitles{};ProtectedState oldProtected;FullTitles oldFullTitles;std::vector<TitleEdit> edits;
+ std::optional<ts::Runtime> titleSwap;
+ std::optional<FullTitles> expectedTitleState;
+ bool titlesSwapped=false;
  Fields writes;bool dirty=false,retained=false;
  bool OriginalDisk(){return disk.OriginalMatches();}
  bool SnapshotMatches(){return All(ui::Get())==All(old)&&Titles(titles)==oldFullTitles&&OriginalDisk();}
- bool TargetMatches(){auto data=disk.Current();if(data!=disk.After()||All(Parse(data))!=All(next)||All(ui::Get())!=All(next)||Protected(titles)!=oldProtected)return false;for(auto& e:edits){auto* t=titles.GetCustomTitle(e.id);if(!t||t->before!=e.before||t->after!=e.after)return false;}auto actual=titles.MakeCustomTitleRecords();for(size_t i=0;i<20;i++){auto expected=oldTitles[i];for(const auto& e:edits)if(e.id==1000+i){expected.before=e.before;expected.after=e.after;}if(actual[i].present!=expected.present||actual[i].favorite!=expected.favorite||actual[i].before!=expected.before||actual[i].after!=expected.after)return false;}return true;}
+ bool TargetMatches(){auto data=disk.Current();if(data!=disk.After()||All(Parse(data))!=All(next)||All(ui::Get())!=All(next) )return false;if(expectedTitleState)return Titles(titles)==*expectedTitleState;if(Protected(titles)!=oldProtected)return false;for(auto& e:edits){auto* t=titles.GetCustomTitle(e.id);if(!t||t->before!=e.before||t->after!=e.after)return false;}auto actual=titles.MakeCustomTitleRecords();for(size_t i=0;i<20;i++){auto expected=oldTitles[i];for(const auto& e:edits)if(e.id==1000+i){expected.before=e.before;expected.after=e.after;}if(actual[i].present!=expected.present||actual[i].favorite!=expected.favorite||actual[i].before!=expected.before||actual[i].after!=expected.after)return false;}return true;}
  public:
  FullTitles SaveBaseline()const{return oldFullTitles;}
  bool finalized=false;
@@ -87,6 +90,12 @@ class Transaction {
    if(normalized.size()>1000000||wire.size()>1000000)throw std::runtime_error("plan-size");
    old=ui::Get();next=old;oldTitles=titles.MakeCustomTitleRecords();oldProtected=Protected(titles);oldFullTitles=Titles(titles);
    auto typed=POT::Precode::ValidatePlan(normalized,wire,planHash,{old,oldTitles});
+   if (typed.replacementTitles) {
+    static_assert(std::is_nothrow_swappable_v<ts::Runtime>);
+    titleSwap.emplace(titles);
+    if (!titleSwap->ReplaceProfileTitles(*typed.replacementTitles)) throw std::runtime_error("title-replacement-invalid");
+    expectedTitleState=Titles(*titleSwap);
+   }
    std::string trusted;for(const auto& change:typed.native){auto scalar=[](const POT::Precode::Scalar& v){return std::visit([](const auto& x)->std::string{using T=std::decay_t<decltype(x)>;if constexpr(std::is_same_v<T,std::string>)return x;else if constexpr(std::is_same_v<T,bool>)return x?"1":"0";else return Num(x);},v);};trusted+=change.key+"="+Hex(scalar(change.before))+":"+Hex(scalar(change.after))+"\n";}
    trusted+="--TITLES--\n";for(const auto& t:typed.titles)trusted+=std::to_string(t.id)+":"+Hex(t.beforePrefix)+":"+Hex(t.beforeSuffix)+":"+Hex(t.afterPrefix)+":"+Hex(t.afterSuffix)+"\n";
    std::istringstream in(trusted);std::string line;bool section=false;std::set<uint16_t> ids;
@@ -114,7 +123,12 @@ class Transaction {
  bool Match(const std::string& request,const std::string& plan){return request==id&&plan==hash;}
  std::string Abort(const std::string& request,const std::string& plan){if(!Match(request,plan))return "RESULT_UNKNOWN";if(finalized)return state;if(state=="ABORTED")return state;if(state!="PREPARED"&&state!="COMMITTED")return state;
   bool t=true,m=true,d=true;
-  if(dirty){for(auto it=edits.rbegin();it!=edits.rend();++it){const auto& v=oldTitles[it->id-1000];const auto* current=titles.GetCustomTitle(it->id);if(fault.titleRecovery||Protected(titles)!=oldProtected||!current||!((current->before==it->before&&current->after==it->after)||(current->before==v.before&&current->after==v.after))||!titles.UpsertCustomTitle(it->id,v.before,v.after))t=false;}
+  if(dirty){
+   if(titlesSwapped){
+    if(fault.titleRecovery||!(Titles(titles)==*expectedTitleState))t=false;
+    else{std::swap(titles,*titleSwap);titlesSwapped=false;}
+   }
+   for(auto it=edits.rbegin();it!=edits.rend();++it){const auto& v=oldTitles[it->id-1000];const auto* current=titles.GetCustomTitle(it->id);if(fault.titleRecovery||Protected(titles)!=oldProtected||!current||!((current->before==it->before&&current->after==it->after)||(current->before==v.before&&current->after==v.after))||!titles.UpsertCustomTitle(it->id,v.before,v.after))t=false;}
    if(fault.memoryRecovery||(All(ui::Get())!=All(next)&&All(ui::Get())!=All(old)))m=false;else m=ui::Apply(old,false);
    d=!fault.diskRecovery&&disk.Restore();
   }
@@ -136,6 +150,11 @@ class Transaction {
    // Exercise a failure after actual partial mutation, not a pre-call-only mock.
    if(!ui::Apply(next,false))throw std::runtime_error("memory-apply");
    if(fault.at=="memory")throw std::runtime_error("injected-memory-after-apply");
+   if(titleSwap){
+    std::swap(titles,*titleSwap);
+    titlesSwapped=true;
+    if(fault.at=="title")throw std::runtime_error("injected-title-after-update");
+   }
    for(auto& e:edits){if(!titles.GetCustomTitle(e.id)||!titles.UpsertCustomTitle(e.id,e.before,e.after))throw std::runtime_error("title-update");if(fault.at=="title")throw std::runtime_error("injected-title-after-update");}
    if(fault.at=="verify"||!TargetMatches())throw std::runtime_error("post-readback");
    retained=true;state="COMMITTED";return state;
