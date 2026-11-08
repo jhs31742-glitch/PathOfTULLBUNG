@@ -1,6 +1,6 @@
-# Path of TULLBUNG 1.0
+# Path of TULLBUNG 1.0.1
 
-Skyrim Special Edition용 직업·노드·칭호 모드입니다. DLL 버전은 1.0.0입니다.
+Skyrim Special Edition용 직업·노드·칭호 모드입니다. DLL 버전은 1.0.1입니다.
 
 ## 설치 및 실행
 
@@ -37,4 +37,6 @@ Skyrim Special Edition용 직업·노드·칭호 모드입니다. DLL 버전은 
 - 넥슨 워헤이븐체: https://brand.nexon.com/ko/ci-brand-guidelines/typeface#section-warhaven
 - 던파 비트비트체 v2 및 연단된 칼날: https://df.nexon.com/data/font
 - 동봉 서체의 저작권 및 배포 조건: FONT_LICENSES.txt
-- GitHub 비공개 저장소: https://github.com/jhs31742-glitch/PathOfTULLBUNG
+- GitHub 공개 저장소: https://github.com/jhs31742-glitch/PathOfTULLBUNG
+## 1.0.1 첫 설치 수정
+POT 저장 레코드가 없는 기존 세이브를 처음 열 때 초기 상태로 시작합니다. 일부만 남았거나 읽기에 실패한 POT 레코드는 기존 보호 경로를 사용합니다. 원본 ESS와 동명의 SKSE co-save를 백업하고, 새 슬롯에서 저장 및 재로드를 확인하세요.

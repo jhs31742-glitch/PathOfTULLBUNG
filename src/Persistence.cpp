@@ -724,7 +724,11 @@ namespace
 
             /* Already captured the entire record. */
         }
-        g_captureIncomplete=captureFailed;
+        g_captureIncomplete = captureFailed;
+        if (!g_captureIncomplete && g_originalRecords.empty()) {
+            logger::info("[Persistence] No POT records available; using first-install state");
+            return;
+        }
         if(g_captureIncomplete||!g_pending.hasBuild||std::any_of(g_originalRecords.begin(),g_originalRecords.end(),[](const auto& r){return !r.accepted;}))g_preserveOriginal=true;
         if(g_preserveOriginal)logger::error("[Persistence][SAVE_SAFETY_HOLD] Unsupported/corrupt/duplicate/missing BLD1 record; apply blocked and original replay selected");
     }
