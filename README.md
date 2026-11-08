@@ -37,7 +37,7 @@ Skyrim Special Edition용 직업·노드·칭호 모드입니다. DLL 버전은 
 - 넥슨 워헤이븐체: https://brand.nexon.com/ko/ci-brand-guidelines/typeface#section-warhaven
 - 던파 비트비트체 v2 및 연단된 칼날: https://df.nexon.com/data/font
 - 동봉 서체의 저작권 및 배포 조건: FONT_LICENSES.txt
-- GitHub 비공개 저장소: https://github.com/jhs31742-glitch/PathOfTULLBUNG
+- GitHub 저장소: https://github.com/jhs31742-glitch/PathOfTULLBUNG
 
 ## 소스 빌드
 CMake에는 기존 개발 PC의 CommonLibSSE-NG 및 vcpkg 경로가 기록되어 있습니다. 다른 환경에서 빌드하려면 해당 의존성 위치를 맞추십시오.
